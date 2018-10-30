@@ -870,7 +870,7 @@ func (hub *Client) getProjectVersionPolicyStatus(link hubapi.ResourceLink) (*hub
 func (hub *Client) GetPolicyRule(link hubapi.ResourceLink) (*hubapi.PolicyRule, error) {
 	var val *hubapi.PolicyRule
 	var fetchError error
-	err := hub.circuitBreaker.IssueRequest("policyRule", func() error {
+	err := hub.circuitBreaker.IssueRequest("getPolicyRule", func() error {
 		val, fetchError = hub.client.GetPolicyRule(link)
 		return fetchError
 	})
@@ -880,12 +880,40 @@ func (hub *Client) GetPolicyRule(link hubapi.ResourceLink) (*hubapi.PolicyRule, 
 	return val, fetchError
 }
 
+// CreatePolicyRule will create a given policy rule in the hub
+func (hub *Client) CreatePolicyRule(request *hubapi.PolicyRuleRequest) (string, error) {
+	var val string
+	var fetchError error
+	err := hub.circuitBreaker.IssueRequest("createPolicyRule", func() error {
+		val, fetchError = hub.client.CreatePolicyRule(request)
+		return fetchError
+	})
+	if err != nil {
+		return "", err
+	}
+	return val, fetchError
+}
+
 // GetUser will retrieve a given user from the hub
 func (hub *Client) GetUser(link hubapi.ResourceLink) (*hubapi.User, error) {
 	var val *hubapi.User
 	var fetchError error
-	err := hub.circuitBreaker.IssueRequest("user", func() error {
+	err := hub.circuitBreaker.IssueRequest("getUser", func() error {
 		val, fetchError = hub.client.GetUser(link)
+		return fetchError
+	})
+	if err != nil {
+		return nil, err
+	}
+	return val, fetchError
+}
+
+// CreateUser will create a given user in the hub
+func (hub *Client) CreateUser(request *hubapi.UserRequest) (*hubapi.User, error) {
+	var val *hubapi.User
+	var fetchError error
+	err := hub.circuitBreaker.IssueRequest("createUser", func() error {
+		val, fetchError = hub.client.CreateUser(request)
 		return fetchError
 	})
 	if err != nil {
@@ -898,7 +926,7 @@ func (hub *Client) GetUser(link hubapi.ResourceLink) (*hubapi.User, error) {
 func (hub *Client) GetComponent(link hubapi.ResourceLink) (*hubapi.Component, error) {
 	var val *hubapi.Component
 	var fetchError error
-	err := hub.circuitBreaker.IssueRequest("component", func() error {
+	err := hub.circuitBreaker.IssueRequest("getComponent", func() error {
 		val, fetchError = hub.client.GetComponent(link)
 		return fetchError
 	})

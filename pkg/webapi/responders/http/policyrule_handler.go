@@ -27,6 +27,8 @@ import (
 
 	"github.com/blackducksoftware/armada/pkg/actions"
 
+	"github.com/blackducksoftware/hub-client-go/hubapi"
+
 	"github.com/gorilla/mux"
 
 	log "github.com/sirupsen/logrus"
@@ -49,6 +51,14 @@ func (resp *Responder) PolicyRulesHandler(w http.ResponseWriter, r *http.Request
 			req = actions.NewGetPolicyRules(actions.PolicyRulesGetOne, policyRule)
 		}
 		resp.sendHTTPResponse(req, w, r)
+	} else if r.Method == http.MethodPost {
+		// Create the policy rule
+		var request hubapi.PolicyRuleRequest
+		ok := resp.unmarshalRequest(w, r, &request)
+		if ok {
+			req = actions.NewCreatePolicyRule(&request)
+			resp.sendHTTPResponse(req, w, r)
+		}
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
 	}

@@ -45,8 +45,10 @@ type RawClientInterface interface {
 	DeleteCodeLocation(name string) error
 	ListPolicyRules(options *hubapi.GetListOptions) (*hubapi.PolicyRuleList, error)
 	GetPolicyRule(link hubapi.ResourceLink) (*hubapi.PolicyRule, error)
+	CreatePolicyRule(*hubapi.PolicyRuleRequest) (string, error)
 	ListUsers(options *hubapi.GetListOptions) (*hubapi.UserList, error)
 	GetUser(hubapi.ResourceLink) (*hubapi.User, error)
+	CreateUser(*hubapi.UserRequest) (*hubapi.User, error)
 	ListComponents(options *hubapi.GetListOptions) (*hubapi.ComponentList, error)
 	GetComponent(hubapi.ResourceLink) (*hubapi.Component, error)
 }

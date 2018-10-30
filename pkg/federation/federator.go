@@ -23,7 +23,6 @@ package federation
 
 import (
 	"fmt"
-	//	"net"
 	"net/http"
 	"os"
 	"reflect"
@@ -103,22 +102,6 @@ func NewFederator(configPath string) (*Federator, error) {
 	prometheus.Unregister(prometheus.NewProcessCollector(os.Getpid(), ""))
 	prometheus.Unregister(prometheus.NewGoCollector())
 
-	//	http.Handle("/metrics", prometheus.Handler())
-
-	/*
-		// dump events into 'actions' queue
-		go func() {
-			for {
-				select {
-				case a := <-responder.RequestsCh:
-					actions <- a
-				case d := <-hubCreator.didFinishHubCreation:
-					actions <- d
-				}
-			}
-		}()
-	*/
-
 	fed := &Federator{
 		responder:  responder,
 		router:     router,
@@ -128,20 +111,6 @@ func NewFederator(configPath string) (*Federator, error) {
 		stop:       make(chan struct{}),
 		actions:    make(chan actions.ActionInterface, actionChannelSize),
 	}
-
-	/*
-		// process actions
-		go func() {
-			for {
-				a := <-actions
-				log.Debugf("received action %s", reflect.TypeOf(a))
-				start := time.Now()
-				a.Apply(fed)
-				stop := time.Now()
-				log.Debugf("finished processing action -- %s", stop.Sub(start))
-			}
-		}()
-	*/
 
 	return fed, nil
 }
@@ -181,38 +150,6 @@ func (fed *Federator) Run(stopCh chan struct{}) {
 	}()
 	<-stopCh
 }
-
-/*
-func (fed *Federator) SetHubs(hubList *api.HubList) error {
-	newHubURLs := map[string]bool{}
-	hubsToCreate := api.HubList{}
-
-	for _, newHub := range hubList.Items {
-		hubURL := fmt.Sprintf("https://%s:%d", newHub.Host, newHub.Port)
-		newHubURLs[hubURL] = true
-		if _, ok := fed.hubs[hubURL]; !ok {
-			hubsToCreate.Items = append(hubsToCreate.Items, newHub)
-		}
-	}
-
-	// 1. create new hubs
-	// TODO handle retries and failures intelligently
-	go func() {
-		fed.hubCreator.CreateClients(&hubsToCreate)
-	}()
-
-	// 2. delete removed hubs
-	for hubURL, hubClient := range fed.hubs {
-		if _, ok := newHubURLs[hubURL]; !ok {
-			hubClient.Stop()
-			delete(fed.hubs, hubURL)
-			// TODO does any other clean up need to happen?
-		}
-	}
-
-	return nil
-}
-*/
 
 // CreateHubClients will create hub clients for the provided hubs
 func (fed *Federator) CreateHubClients(hubList *api.HubList) {
