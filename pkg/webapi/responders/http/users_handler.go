@@ -27,6 +27,8 @@ import (
 
 	"github.com/blackducksoftware/armada/pkg/actions"
 
+	"github.com/blackducksoftware/hub-client-go/hubapi"
+
 	"github.com/gorilla/mux"
 
 	log "github.com/sirupsen/logrus"
@@ -49,6 +51,14 @@ func (resp *Responder) UsersHandler(w http.ResponseWriter, r *http.Request) {
 			req = actions.NewGetUsers(actions.UsersGetOne, user)
 		}
 		resp.sendHTTPResponse(req, w, r)
+	} else if r.Method == http.MethodPost {
+		// Create the user
+		var request hubapi.UserRequest
+		ok := resp.unmarshalRequest(w, r, &request)
+		if ok {
+			req = actions.NewCreateUser(&request)
+			resp.sendHTTPResponse(req, w, r)
+		}
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
 	}

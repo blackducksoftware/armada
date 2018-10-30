@@ -31,27 +31,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-/*
-// HubConfig defines the config used when contacting a hub
-type HubConfig struct {
-	User                         string
-	PasswordEnvVar               string
-	ClientTimeoutMilliseconds    int
-	Port                         int
-	FetchAllProjectsPauseSeconds int
-}
-
-// ClientTimeout converts the milliseconds to a duration
-func (config *HubConfig) ClientTimeout() time.Duration {
-	return time.Duration(config.ClientTimeoutMilliseconds) * time.Millisecond
-}
-
-// FetchAllProjectsPause converts the minutes to a duration
-func (config *HubConfig) FetchAllProjectsPause() time.Duration {
-	return time.Duration(config.FetchAllProjectsPauseSeconds) * time.Second
-}
-*/
-
 // FederatorConfig defines the configuration for the federator
 type FederatorConfig struct {
 	HubDefaults       *api.HubConfig `json:"hubDefaults,omitempty"`

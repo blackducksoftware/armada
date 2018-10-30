@@ -89,7 +89,7 @@ func NewGetUsers(rt GetUsersRequestType, id string) *GetUsers {
 }
 
 // Execute will tell the provided federator to retrieve users
-func (gcl *GetUsers) Execute(fed FederatorInterface) error {
+func (gu *GetUsers) Execute(fed FederatorInterface) error {
 	var wg sync.WaitGroup
 	var users hubapi.UserList
 
@@ -126,36 +126,87 @@ func (gcl *GetUsers) Execute(fed FederatorInterface) error {
 					usersListCh <- list
 				}
 			}
-		}(client, hubURL, gcl.userID, gcl.requestType)
+		}(client, hubURL, gu.userID, gu.requestType)
 	}
 
 	wg.Wait()
 	for i := 0; i < hubCount; i++ {
 		response := <-usersListCh
 		if response != nil {
-			log.Debugf("a hub responded with codelocation list: %+v", response)
-			gcl.mergeUserList(&users, response)
+			log.Debugf("a hub responded with user list: %+v", response)
+			gu.mergeUserList(&users, response)
 		}
 	}
 
 	getResponse := GetUsersResponse{
-		requestType: gcl.requestType,
-		userID:      gcl.userID,
+		requestType: gu.requestType,
+		userID:      gu.userID,
 		allUsers:    &users,
 	}
 
-	gcl.responseCh <- &getResponse
+	gu.responseCh <- &getResponse
 	return nil
 }
 
-func (gcl *GetUsers) mergeUserList(origList, newList *hubapi.UserList) {
+func (gu *GetUsers) mergeUserList(origList, newList *hubapi.UserList) {
 	origList.TotalCount += newList.TotalCount
 	origList.Items = append(origList.Items, newList.Items...)
-	//	origList.Meta.Allow = append(origList.Meta.Allow, newList.Meta.Allow...)
-	//	origList.Meta.Links = append(origList.Meta.Links, newList.Meta.Links...)
 }
 
 // GetResponse returns the response to the get users query
-func (gcl *GetUsers) GetResponse() ActionResponseInterface {
-	return <-gcl.responseCh
+func (gu *GetUsers) GetResponse() ActionResponseInterface {
+	return <-gu.responseCh
+}
+
+// CreateUser handles creating a user
+// in all the hubs known to the federator
+type CreateUser struct {
+	request    *hubapi.UserRequest
+	responseCh chan *CreateResponse
+}
+
+// NewCreateUser creates a new CreateUser object
+func NewCreateUser(r *hubapi.UserRequest) *CreateUser {
+	return &CreateUser{request: r, responseCh: make(chan *CreateResponse)}
+}
+
+// Execute will tell the provided federator to create the user in all hubs
+func (cu *CreateUser) Execute(fed FederatorInterface) error {
+	var wg sync.WaitGroup
+
+	hubs := fed.GetHubs()
+	log.Debugf("CreateUser federator hubs: %+v", hubs)
+	hubCount := len(hubs)
+	usersCh := make(chan *hubapi.User, hubCount)
+
+	wg.Add(hubCount)
+	for hubURL, client := range hubs {
+		go func(client *hub.Client, url string, req *hubapi.UserRequest) {
+			defer wg.Done()
+			log.Debugf("creating user %s", req.UserName)
+			user, err := client.CreateUser(req)
+			if err != nil {
+				log.Warningf("failed to create user %s in %s: %v", req.UserName, url, err)
+				usersCh <- nil
+			} else {
+				usersCh <- user
+			}
+		}(client, hubURL, cu.request)
+	}
+
+	wg.Wait()
+	for i := 0; i < hubCount; i++ {
+		response := <-usersCh
+		if response != nil {
+			log.Debugf("a hub responded with user: %+v", response)
+		}
+	}
+
+	cu.responseCh <- &CreateResponse{}
+	return nil
+}
+
+// GetResponse returns the response to the create users query
+func (cu *CreateUser) GetResponse() ActionResponseInterface {
+	return <-cu.responseCh
 }

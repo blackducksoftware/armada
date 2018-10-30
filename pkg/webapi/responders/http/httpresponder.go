@@ -24,6 +24,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 
@@ -43,17 +44,6 @@ type Responder struct {
 func NewResponder(ip net.IP) *Responder {
 	return &Responder{localIP: ip.String(), requestsCh: make(chan actions.ActionInterface)}
 }
-
-/*
-// GetModel .....
-func (resp *Responder) GetModel() *APIModel {
-	get := NewGetModelAction()
-	go func() {
-		resp.requestsCh <- get
-	}()
-	return <-get.Done
-}
-*/
 
 // SetHubs ...
 //func (r *Responder) SetHubs(hubs *APISetHubsRequest) {
@@ -100,12 +90,30 @@ func (resp *Responder) sendHTTPResponse(req actions.ActionInterface, w http.Resp
 	resp.requestsCh <- req
 	actionResponse := req.GetResponse()
 	actionResponse.ReplaceSource(resp.localIP)
-	jsonBytes, err := json.MarshalIndent(actionResponse.GetResult(), "", "  ")
-	if err != nil {
-		resp.Error(w, r, err, 500)
-	} else {
-		header := w.Header()
-		header.Set(http.CanonicalHeaderKey("content-type"), "application/json")
-		fmt.Fprint(w, string(jsonBytes))
+	result := actionResponse.GetResult()
+	if result != nil {
+		jsonBytes, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			resp.Error(w, r, err, 500)
+		} else {
+			header := w.Header()
+			header.Set(http.CanonicalHeaderKey("content-type"), "application/json")
+			fmt.Fprint(w, string(jsonBytes))
+		}
 	}
+}
+
+func (resp *Responder) unmarshalRequest(w http.ResponseWriter, r *http.Request, req interface{}) bool {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		resp.Error(w, r, fmt.Errorf("error reading request body: %+v", err), 400)
+		return false
+	}
+	log.Debugf("unmarshaling: %s", string(body))
+	err = json.Unmarshal(body, req)
+	if err != nil {
+		resp.Error(w, r, fmt.Errorf("unmarshaling error: %+v", err), 400)
+		return false
+	}
+	return true
 }
