@@ -59,6 +59,10 @@ func (resp *Responder) PolicyRulesHandler(w http.ResponseWriter, r *http.Request
 			req = actions.NewCreatePolicyRule(&request)
 			resp.sendHTTPResponse(req, w, r)
 		}
+	} else if r.Method == http.MethodDelete {
+		// Delete the policy rule
+		req = actions.NewDeletePolicyRule(policyRule)
+		resp.sendHTTPResponse(req, w, r)
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
 	}

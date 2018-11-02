@@ -162,12 +162,12 @@ func (gu *GetUsers) GetResponse() ActionResponseInterface {
 // in all the hubs known to the federator
 type CreateUser struct {
 	request    *hubapi.UserRequest
-	responseCh chan *CreateResponse
+	responseCh chan *EmptyResponse
 }
 
 // NewCreateUser creates a new CreateUser object
 func NewCreateUser(r *hubapi.UserRequest) *CreateUser {
-	return &CreateUser{request: r, responseCh: make(chan *CreateResponse)}
+	return &CreateUser{request: r, responseCh: make(chan *EmptyResponse)}
 }
 
 // Execute will tell the provided federator to create the user in all hubs
@@ -202,7 +202,7 @@ func (cu *CreateUser) Execute(fed FederatorInterface) error {
 		}
 	}
 
-	cu.responseCh <- &CreateResponse{}
+	cu.responseCh <- &EmptyResponse{}
 	return nil
 }
 

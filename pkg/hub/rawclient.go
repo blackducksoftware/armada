@@ -46,6 +46,7 @@ type RawClientInterface interface {
 	ListPolicyRules(options *hubapi.GetListOptions) (*hubapi.PolicyRuleList, error)
 	GetPolicyRule(link hubapi.ResourceLink) (*hubapi.PolicyRule, error)
 	CreatePolicyRule(*hubapi.PolicyRuleRequest) (string, error)
+	DeletePolicyRule(string) error
 	ListUsers(options *hubapi.GetListOptions) (*hubapi.UserList, error)
 	GetUser(hubapi.ResourceLink) (*hubapi.User, error)
 	CreateUser(*hubapi.UserRequest) (*hubapi.User, error)
