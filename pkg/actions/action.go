@@ -47,14 +47,14 @@ type FederatorInterface interface {
 	GetHubs() map[string]*hub.Client
 }
 
-// CreateResponse is a generic response to a create request
-// that satisfies the ActionResponseInterface
-type CreateResponse struct{}
+// EmptyResponse is a generic response to a request which
+// provides no response that satisfies the ActionResponseInterface
+type EmptyResponse struct{}
 
 // ReplaceSource does nothing for the generic response
-func (cr *CreateResponse) ReplaceSource(string) {}
+func (cr *EmptyResponse) ReplaceSource(string) {}
 
 // GetResult returns nothing for the generic response
-func (cr *CreateResponse) GetResult() interface{} {
+func (cr *EmptyResponse) GetResult() interface{} {
 	return nil
 }

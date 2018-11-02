@@ -894,6 +894,19 @@ func (hub *Client) CreatePolicyRule(request *hubapi.PolicyRuleRequest) (string, 
 	return val, fetchError
 }
 
+// DeletePolicyRule will delete a given policy rule from the hub
+func (hub *Client) DeletePolicyRule(loc string) error {
+	var fetchError error
+	err := hub.circuitBreaker.IssueRequest("deletePolicyRule", func() error {
+		fetchError = hub.client.DeletePolicyRule(loc)
+		return fetchError
+	})
+	if err != nil {
+		return err
+	}
+	return fetchError
+}
+
 // GetUser will retrieve a given user from the hub
 func (hub *Client) GetUser(link hubapi.ResourceLink) (*hubapi.User, error) {
 	var val *hubapi.User

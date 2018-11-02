@@ -162,12 +162,12 @@ func (gpr *GetPolicyRules) GetResponse() ActionResponseInterface {
 // in all the hubs known to the federator
 type CreatePolicyRule struct {
 	request    *hubapi.PolicyRuleRequest
-	responseCh chan *CreateResponse
+	responseCh chan *EmptyResponse
 }
 
 // NewCreatePolicyRule creates a new CreatePolicyRule object
 func NewCreatePolicyRule(r *hubapi.PolicyRuleRequest) *CreatePolicyRule {
-	return &CreatePolicyRule{request: r, responseCh: make(chan *CreateResponse)}
+	return &CreatePolicyRule{request: r, responseCh: make(chan *EmptyResponse)}
 }
 
 // Execute will tell the provided federator to create the policy rule in all hubs
@@ -204,11 +204,54 @@ func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
 		}
 	}
 
-	cpr.responseCh <- &CreateResponse{}
+	cpr.responseCh <- &EmptyResponse{}
 	return nil
 }
 
-// GetResponse returns the response to the create policyRules query
+// GetResponse returns the response to the create policy rules request
 func (cpr *CreatePolicyRule) GetResponse() ActionResponseInterface {
 	return <-cpr.responseCh
+}
+
+// DeletePolicyRule handles deleting a policy rule
+// in all the hubs known to the federator
+type DeletePolicyRule struct {
+	policyRuleID string
+	responseCh   chan *EmptyResponse
+}
+
+// NewDeletePolicyRule creates a new DeletePolicyRule object
+func NewDeletePolicyRule(id string) *DeletePolicyRule {
+	return &DeletePolicyRule{policyRuleID: id, responseCh: make(chan *EmptyResponse)}
+}
+
+// Execute will tell the provided federator to delete the policy rule in all hubs
+func (dpr *DeletePolicyRule) Execute(fed FederatorInterface) error {
+	var wg sync.WaitGroup
+
+	hubs := fed.GetHubs()
+	log.Debugf("DeletePolicyRule federator hubs: %+v", hubs)
+	hubCount := len(hubs)
+
+	wg.Add(hubCount)
+	for hubURL, client := range hubs {
+		go func(client *hub.Client, url string, id string) {
+			defer wg.Done()
+			log.Debugf("deleting policy rule %s from hub %s", id, url)
+			loc := fmt.Sprintf("https://%s/api/policy-rules/%s", url, id)
+			err := client.DeletePolicyRule(loc)
+			if err != nil {
+				log.Warningf("failed to delete policy rule %s in %s: %v", id, url, err)
+			}
+		}(client, hubURL, dpr.policyRuleID)
+	}
+	wg.Wait()
+
+	dpr.responseCh <- &EmptyResponse{}
+	return nil
+}
+
+// GetResponse returns the response to the delete policy rules request
+func (dpr *DeletePolicyRule) GetResponse() ActionResponseInterface {
+	return <-dpr.responseCh
 }
