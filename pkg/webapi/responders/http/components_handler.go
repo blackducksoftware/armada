@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	"github.com/blackducksoftware/armada/pkg/actions"
+	"github.com/blackducksoftware/armada/pkg/api"
 
 	"github.com/gorilla/mux"
 
@@ -42,12 +43,11 @@ func (resp *Responder) ComponentsHandler(w http.ResponseWriter, r *http.Request)
 		if !ok {
 			// No specific component was given, so this is a request for all components
 			log.Info("retrieving all components")
-			req = actions.NewGetComponents(actions.ComponentsGetAll, component)
 		} else {
 			// Look up the specific component
 			log.Infof("retrieving components %s", component)
-			req = actions.NewGetComponents(actions.ComponentsGetOne, component)
 		}
+		req = actions.NewGetComponents(component, api.ComponentsEndpoint)
 		resp.sendHTTPResponse(req, w, r)
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
@@ -66,7 +66,7 @@ func (resp *Responder) AllComponentsHandler(w http.ResponseWriter, r *http.Reque
 		} else {
 			// Look up the specific component
 			log.Infof("retrieving component %s", component)
-			req = actions.NewGetComponents(actions.ComponentsGetMany, component)
+			req = actions.NewGetComponents(component, api.AllComponentsEndpoint)
 		}
 		resp.sendHTTPResponse(req, w, r)
 	} else {

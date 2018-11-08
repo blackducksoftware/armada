@@ -91,6 +91,7 @@ func (resp *Responder) sendHTTPResponse(req actions.ActionInterface, w http.Resp
 	actionResponse := req.GetResponse()
 	actionResponse.ReplaceSource(resp.localIP)
 	result := actionResponse.GetResult()
+	log.Debugf("sendHTTPResponse result: %+v", result)
 	if result != nil {
 		jsonBytes, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

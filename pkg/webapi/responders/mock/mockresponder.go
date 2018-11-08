@@ -73,3 +73,4 @@ func (mr *Responder) UsersHandler(w http.ResponseWriter, r *http.Request)       
 func (mr *Responder) AllUsersHandler(w http.ResponseWriter, r *http.Request)         {}
 func (mr *Responder) ComponentsHandler(w http.ResponseWriter, r *http.Request)       {}
 func (mr *Responder) AllComponentsHandler(w http.ResponseWriter, r *http.Request)    {}
+func (mr *Responder) LastErrorHandler(w http.ResponseWriter, r *http.Request)        {}

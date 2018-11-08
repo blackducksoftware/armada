@@ -22,8 +22,14 @@ under the License.
 package actions
 
 import (
+	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/blackducksoftware/armada/pkg/api"
 	"github.com/blackducksoftware/armada/pkg/hub"
+
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 )
 
 // ActionInterface defines an interface for actions of the federator
@@ -45,6 +51,8 @@ type FederatorInterface interface {
 	CreateHubClients(*api.HubList)
 	AddHub(string, *hub.Client)
 	GetHubs() map[string]*hub.Client
+	SetLastError(api.EndpointType, *api.LastError)
+	GetLastError(api.EndpointType) *api.LastError
 }
 
 // EmptyResponse is a generic response to a request which
@@ -57,4 +65,47 @@ func (cr *EmptyResponse) ReplaceSource(string) {}
 // GetResult returns nothing for the generic response
 func (cr *EmptyResponse) GetResult() interface{} {
 	return nil
+}
+
+type HubError struct {
+	Host string
+	Err  *hubclient.HubClientError
+}
+
+type GetResponse struct {
+	endPoint api.EndpointType
+	id       string
+	list     interface{}
+}
+
+// ReplaceSource will replace the source URL in the metadata
+// with the federator information
+func (gr *GetResponse) ReplaceSource(ip string) {
+	href := fmt.Sprintf("https://%s/api/%s", ip, gr.endPoint)
+	if len(gr.id) > 0 {
+		href += fmt.Sprintf("/%s", gr.id)
+	}
+	if gr.isSingleResponse() {
+		items := reflect.ValueOf(gr.list).Elem().FieldByName("Items").Index(0)
+		meta := items.FieldByName("Meta")
+		meta.FieldByName("Href").SetString(href)
+	} else {
+		list := reflect.ValueOf(gr.list).Elem()
+		meta := list.FieldByName("Meta")
+		if meta.IsValid() {
+			meta.FieldByName("Href").SetString(href)
+		}
+	}
+}
+
+func (gr *GetResponse) isSingleResponse() bool {
+	return !strings.HasPrefix(string(gr.endPoint), "all-") && len(gr.id) > 0
+}
+
+// GetResult returns the result for a get request
+func (gr *GetResponse) GetResult() interface{} {
+	if gr.isSingleResponse() {
+		return reflect.ValueOf(gr.list).Elem().FieldByName("Items").Index(0).Interface()
+	}
+	return gr.list
 }

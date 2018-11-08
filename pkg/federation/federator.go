@@ -55,8 +55,9 @@ type Federator struct {
 	hubCreator *HubClientCreator
 
 	// model
-	config *FederatorConfig
-	hubs   map[string]*hub.Client
+	config     *FederatorConfig
+	hubs       map[string]*hub.Client
+	lastErrors map[api.EndpointType]*api.LastError
 
 	// channels
 	stop    chan struct{}
@@ -110,6 +111,7 @@ func NewFederator(configPath string) (*Federator, error) {
 		hubs:       map[string]*hub.Client{},
 		stop:       make(chan struct{}),
 		actions:    make(chan actions.ActionInterface, actionChannelSize),
+		lastErrors: map[api.EndpointType]*api.LastError{},
 	}
 
 	return fed, nil
@@ -178,4 +180,12 @@ func (fed *Federator) DeleteHub(url string) {
 // GetHubs returns the hubs known to the federator
 func (fed *Federator) GetHubs() map[string]*hub.Client {
 	return fed.hubs
+}
+
+func (fed *Federator) SetLastError(endPoint api.EndpointType, lastError *api.LastError) {
+	fed.lastErrors[endPoint] = lastError
+}
+
+func (fed *Federator) GetLastError(endPoint api.EndpointType) *api.LastError {
+	return fed.lastErrors[endPoint]
 }

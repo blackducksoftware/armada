@@ -25,97 +25,53 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/blackducksoftware/armada/pkg/api"
 	"github.com/blackducksoftware/armada/pkg/hub"
 
 	"github.com/blackducksoftware/hub-client-go/hubapi"
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 
 	log "github.com/sirupsen/logrus"
 )
 
-// GetPolicyRulesRequestType defines the type of policy rule request
-type GetPolicyRulesRequestType int
-
-const (
-	PolicyRulesGetAll GetPolicyRulesRequestType = iota
-	PolicyRulesGetOne
-	PolicyRulesGetMany
-)
-
-// GetPolicyRulesResponse defines the response for a GetPolicyRules request
-type GetPolicyRulesResponse struct {
-	requestType    GetPolicyRulesRequestType
-	policyRuleID   string
-	allPolicyRules *hubapi.PolicyRuleList
-}
-
-// ReplaceSource will replace the source URL in the policy rule list metadata
-// with the federator information
-func (resp *GetPolicyRulesResponse) ReplaceSource(ip string) {
-	if resp.requestType == PolicyRulesGetOne {
-		resp.allPolicyRules.Items[0].Meta.Href = fmt.Sprintf("https://%s/api/policy-rules/%s", ip, resp.policyRuleID)
-	} else {
-		if resp.requestType == PolicyRulesGetMany {
-			resp.allPolicyRules.Meta.Href = fmt.Sprintf("https://%s/api/all-policy-rules", ip)
-		} else {
-			resp.allPolicyRules.Meta.Href = fmt.Sprintf("https://%s/api/policy-rules", ip)
-		}
-		if len(resp.policyRuleID) > 0 {
-			resp.allPolicyRules.Meta.Href += fmt.Sprintf("/%s", resp.policyRuleID)
-		}
-	}
-}
-
-// GetResult returns the policy rule list
-func (resp *GetPolicyRulesResponse) GetResult() interface{} {
-	if resp.requestType == PolicyRulesGetOne {
-		return resp.allPolicyRules.Items[0]
-	}
-	return resp.allPolicyRules
-}
-
 // GetPolicyRules handles retrieving policy rules
 // from all the hubs known to the federator
 type GetPolicyRules struct {
-	requestType  GetPolicyRulesRequestType
+	endPoint     api.EndpointType
 	policyRuleID string
-	responseCh   chan *GetPolicyRulesResponse
+	responseCh   chan *GetResponse
 }
 
 // NewGetPolicyRules creates a new GetPolicyRules object
-func NewGetPolicyRules(rt GetPolicyRulesRequestType, id string) *GetPolicyRules {
-	return &GetPolicyRules{requestType: rt, policyRuleID: id, responseCh: make(chan *GetPolicyRulesResponse)}
+func NewGetPolicyRules(id string, ep api.EndpointType) *GetPolicyRules {
+	return &GetPolicyRules{policyRuleID: id, responseCh: make(chan *GetResponse), endPoint: ep}
 }
 
 // Execute will tell the provided federator to retrieve policy rules
 func (gpr *GetPolicyRules) Execute(fed FederatorInterface) error {
 	var wg sync.WaitGroup
 	var policyRules hubapi.PolicyRuleList
+	var errs api.LastError
 
 	hubs := fed.GetHubs()
 	log.Debugf("GetPolicyRules federator hubs: %+v", hubs)
 	hubCount := len(hubs)
 	policyRulesListCh := make(chan *hubapi.PolicyRuleList, hubCount)
+	errCh := make(chan HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
 	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, id string, rt GetPolicyRulesRequestType) {
+		go func(client *hub.Client, url string, id string) {
 			defer wg.Done()
-			if rt == PolicyRulesGetAll {
-				log.Debugf("querying all policy rules")
-				list, err := client.ListAllPolicyRules()
-				if err != nil {
-					log.Warningf("failed to get policy rules from %s: %v", url, err)
-					policyRulesListCh <- nil
-				} else {
-					policyRulesListCh <- list
-				}
-			} else {
+			if len(id) > 0 {
 				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/policy-rules/%s", url, id)}
 				log.Debugf("querying policy rule %s", link.Href)
 				p, err := client.GetPolicyRule(link)
 				log.Debugf("response to policy rule query from %s: %+v", link.Href, p)
 				if err != nil {
-					policyRulesListCh <- nil
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- HubError{Host: url, Err: hubErr}
 				} else {
 					list := &hubapi.PolicyRuleList{
 						TotalCount: 1,
@@ -123,24 +79,40 @@ func (gpr *GetPolicyRules) Execute(fed FederatorInterface) error {
 					}
 					policyRulesListCh <- list
 				}
+			} else {
+				log.Debugf("querying all policy rules")
+				list, err := client.ListAllPolicyRules()
+				if err != nil {
+					log.Warningf("failed to get policy rules from %s: %v", url, err)
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- HubError{Host: url, Err: hubErr}
+				} else {
+					policyRulesListCh <- list
+				}
 			}
-		}(client, hubURL, gpr.policyRuleID, gpr.requestType)
+		}(client, hubURL, gpr.policyRuleID)
 	}
 
 	wg.Wait()
 	for i := 0; i < hubCount; i++ {
-		response := <-policyRulesListCh
-		if response != nil {
-			log.Debugf("a hub responded with policy rule list: %+v", response)
-			gpr.mergePolicyRuleList(&policyRules, response)
+		select {
+		case response := <-policyRulesListCh:
+			if response != nil {
+				log.Debugf("a hub responded with policy rule list: %+v", response)
+				gpr.mergePolicyRuleList(&policyRules, response)
+			}
+		case err := <-errCh:
+			errs.Errors[err.Host] = err.Err
 		}
 	}
 
-	getResponse := GetPolicyRulesResponse{
-		requestType:    gpr.requestType,
-		policyRuleID:   gpr.policyRuleID,
-		allPolicyRules: &policyRules,
+	getResponse := GetResponse{
+		endPoint: gpr.endPoint,
+		id:       gpr.policyRuleID,
+		list:     &policyRules,
 	}
+
+	fed.SetLastError(gpr.endPoint, &errs)
 
 	gpr.responseCh <- &getResponse
 	return nil
@@ -174,11 +146,14 @@ func NewCreatePolicyRule(r *hubapi.PolicyRuleRequest) *CreatePolicyRule {
 func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
 	var wg sync.WaitGroup
 	var policyRules []string
+	var errs api.LastError
 
 	hubs := fed.GetHubs()
 	log.Debugf("CreatePolicyRule federator hubs: %+v", hubs)
 	hubCount := len(hubs)
 	policyRulesCh := make(chan string, hubCount)
+	errCh := make(chan HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
 	for hubURL, client := range hubs {
@@ -188,7 +163,8 @@ func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
 			pr, err := client.CreatePolicyRule(req)
 			if err != nil {
 				log.Warningf("failed to create policy rule %s in %s: %v", req.Name, url, err)
-				policyRulesCh <- ""
+				hubErr := err.(*hubclient.HubClientError)
+				errCh <- HubError{Host: url, Err: hubErr}
 			} else {
 				policyRulesCh <- pr
 			}
@@ -197,12 +173,18 @@ func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
 
 	wg.Wait()
 	for i := 0; i < hubCount; i++ {
-		response := <-policyRulesCh
-		if len(response) > 0 {
-			log.Debugf("a hub responded with policy rule: %+v", response)
-			policyRules = append(policyRules, response)
+		select {
+		case response := <-policyRulesCh:
+			if len(response) > 0 {
+				log.Debugf("a hub responded with policy rule: %+v", response)
+				policyRules = append(policyRules, response)
+			}
+		case err := <-errCh:
+			errs.Errors[err.Host] = err.Err
 		}
 	}
+
+	fed.SetLastError(api.PolicyRulesEndpoint, &errs)
 
 	cpr.responseCh <- &EmptyResponse{}
 	return nil
@@ -228,10 +210,13 @@ func NewDeletePolicyRule(id string) *DeletePolicyRule {
 // Execute will tell the provided federator to delete the policy rule in all hubs
 func (dpr *DeletePolicyRule) Execute(fed FederatorInterface) error {
 	var wg sync.WaitGroup
+	var errs api.LastError
 
 	hubs := fed.GetHubs()
 	log.Debugf("DeletePolicyRule federator hubs: %+v", hubs)
 	hubCount := len(hubs)
+	errCh := make(chan HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
 	for hubURL, client := range hubs {
@@ -243,9 +228,20 @@ func (dpr *DeletePolicyRule) Execute(fed FederatorInterface) error {
 			if err != nil {
 				log.Warningf("failed to delete policy rule %s in %s: %v", id, url, err)
 			}
+			hubErr := err.(*hubclient.HubClientError)
+			errCh <- HubError{Host: url, Err: hubErr}
 		}(client, hubURL, dpr.policyRuleID)
 	}
 	wg.Wait()
+
+	for i := 0; i < hubCount; i++ {
+		err := <-errCh
+		if err.Err != nil {
+			errs.Errors[err.Host] = err.Err
+		}
+	}
+
+	fed.SetLastError(api.PolicyRulesEndpoint, &errs)
 
 	dpr.responseCh <- &EmptyResponse{}
 	return nil

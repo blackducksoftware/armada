@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	"github.com/blackducksoftware/armada/pkg/actions"
+	"github.com/blackducksoftware/armada/pkg/api"
 
 	"github.com/gorilla/mux"
 
@@ -42,12 +43,11 @@ func (resp *Responder) ProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			// No specific project was given, so this is a request for all projects
 			log.Info("retrieving all projects")
-			req = actions.NewGetProjects(actions.ProjectsGetAll, project)
 		} else {
 			// Look up the specific project
 			log.Infof("retrieving project %s", project)
-			req = actions.NewGetProjects(actions.ProjectsGetOne, project)
 		}
+		req = actions.NewGetProjects(project, api.ProjectsEndpoint)
 		resp.sendHTTPResponse(req, w, r)
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
@@ -66,7 +66,7 @@ func (resp *Responder) AllProjectsHandler(w http.ResponseWriter, r *http.Request
 		} else {
 			// Look up the specific project
 			log.Infof("retrieving project %s", project)
-			req = actions.NewGetProjects(actions.ProjectsGetMany, project)
+			req = actions.NewGetProjects(project, api.AllProjectsEndpoint)
 		}
 		resp.sendHTTPResponse(req, w, r)
 	} else {

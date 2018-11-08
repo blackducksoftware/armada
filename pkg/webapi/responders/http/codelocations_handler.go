@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	"github.com/blackducksoftware/armada/pkg/actions"
+	"github.com/blackducksoftware/armada/pkg/api"
 
 	"github.com/gorilla/mux"
 
@@ -42,12 +43,11 @@ func (resp *Responder) CodeLocationsHandler(w http.ResponseWriter, r *http.Reque
 		if !ok {
 			// No specific code location was given, so this is a request for all code locations
 			log.Info("retrieving all code locations")
-			req = actions.NewGetCodeLocations(actions.CodeLocationsGetAll, codeLocation)
 		} else {
 			// Look up the specific code location
 			log.Infof("retrieving code location %s", codeLocation)
-			req = actions.NewGetCodeLocations(actions.CodeLocationsGetOne, codeLocation)
 		}
+		req = actions.NewGetCodeLocations(codeLocation, api.CodeLocationsEndpoint)
 		resp.sendHTTPResponse(req, w, r)
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
@@ -66,7 +66,7 @@ func (resp *Responder) AllCodeLocationsHandler(w http.ResponseWriter, r *http.Re
 		} else {
 			// Look up the specific code location
 			log.Infof("retrieving code location %s", codeLocation)
-			req = actions.NewGetCodeLocations(actions.CodeLocationsGetMany, codeLocation)
+			req = actions.NewGetCodeLocations(codeLocation, api.AllCodeLocationsEndpoint)
 		}
 		resp.sendHTTPResponse(req, w, r)
 	} else {

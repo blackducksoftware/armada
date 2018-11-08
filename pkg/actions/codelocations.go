@@ -25,97 +25,53 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/blackducksoftware/armada/pkg/api"
 	"github.com/blackducksoftware/armada/pkg/hub"
 
 	"github.com/blackducksoftware/hub-client-go/hubapi"
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 
 	log "github.com/sirupsen/logrus"
 )
 
-// GetCodeLocationsRequestType defines the type of code location request
-type GetCodeLocationsRequestType int
-
-const (
-	CodeLocationsGetAll GetCodeLocationsRequestType = iota
-	CodeLocationsGetOne
-	CodeLocationsGetMany
-)
-
-// GetCodeLocationsResponse defines the response for a GetCodeLocations request
-type GetCodeLocationsResponse struct {
-	requestType      GetCodeLocationsRequestType
-	codeLocationID   string
-	allCodeLocations *hubapi.CodeLocationList
-}
-
-// ReplaceSource will replace the source URL in the code location list metadata
-// with the federator information
-func (resp *GetCodeLocationsResponse) ReplaceSource(ip string) {
-	if resp.requestType == CodeLocationsGetOne {
-		resp.allCodeLocations.Items[0].Meta.Href = fmt.Sprintf("https://%s/api/codelocations/%s", ip, resp.codeLocationID)
-	} else {
-		if resp.requestType == CodeLocationsGetMany {
-			resp.allCodeLocations.Meta.Href = fmt.Sprintf("https://%s/api/all-codelocations", ip)
-		} else {
-			resp.allCodeLocations.Meta.Href = fmt.Sprintf("https://%s/api/codelocations", ip)
-		}
-		if len(resp.codeLocationID) > 0 {
-			resp.allCodeLocations.Meta.Href += fmt.Sprintf("/%s", resp.codeLocationID)
-		}
-	}
-}
-
-// GetResult returns the code location list
-func (resp *GetCodeLocationsResponse) GetResult() interface{} {
-	if resp.requestType == CodeLocationsGetOne {
-		return resp.allCodeLocations.Items[0]
-	}
-	return resp.allCodeLocations
-}
-
 // GetCodeLocations handles retrieving code locations
 // from all the hubs known to the federator
 type GetCodeLocations struct {
-	requestType    GetCodeLocationsRequestType
+	endPoint       api.EndpointType
 	codeLocationID string
-	responseCh     chan *GetCodeLocationsResponse
+	responseCh     chan *GetResponse
 }
 
 // NewGetCodeLocations creates a new GetCodeLocations object
-func NewGetCodeLocations(rt GetCodeLocationsRequestType, id string) *GetCodeLocations {
-	return &GetCodeLocations{requestType: rt, codeLocationID: id, responseCh: make(chan *GetCodeLocationsResponse)}
+func NewGetCodeLocations(id string, ep api.EndpointType) *GetCodeLocations {
+	return &GetCodeLocations{codeLocationID: id, endPoint: ep, responseCh: make(chan *GetResponse)}
 }
 
 // Execute will tell the provided federator to retrieve code locations
 func (gcl *GetCodeLocations) Execute(fed FederatorInterface) error {
 	var wg sync.WaitGroup
 	var codeLocations hubapi.CodeLocationList
+	var errs api.LastError
 
 	hubs := fed.GetHubs()
 	log.Debugf("GetCodeLocations federator hubs: %+v", hubs)
 	hubCount := len(hubs)
 	codeLocationsListCh := make(chan *hubapi.CodeLocationList, hubCount)
+	errCh := make(chan HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
 	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, id string, rt GetCodeLocationsRequestType) {
+		go func(client *hub.Client, url string, id string) {
 			defer wg.Done()
-			if rt == CodeLocationsGetAll {
-				log.Debugf("querying all code locations")
-				list, err := client.ListAllCodeLocations()
-				if err != nil {
-					log.Warningf("failed to get code locations from %s: %v", url, err)
-					codeLocationsListCh <- nil
-				} else {
-					codeLocationsListCh <- list
-				}
-			} else {
+			if len(id) > 0 {
 				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/codelocations/%s", url, id)}
 				log.Debugf("querying code location %s", link.Href)
 				cl, err := client.GetCodeLocation(link)
 				log.Debugf("response to code location query from %s: %+v", link.Href, cl)
 				if err != nil {
-					codeLocationsListCh <- nil
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- HubError{Host: url, Err: hubErr}
 				} else {
 					list := &hubapi.CodeLocationList{
 						TotalCount: 1,
@@ -123,24 +79,40 @@ func (gcl *GetCodeLocations) Execute(fed FederatorInterface) error {
 					}
 					codeLocationsListCh <- list
 				}
+			} else {
+				log.Debugf("querying all code locations")
+				list, err := client.ListAllCodeLocations()
+				if err != nil {
+					log.Warningf("failed to get code locations from %s: %v", url, err)
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- HubError{Host: url, Err: hubErr}
+				} else {
+					codeLocationsListCh <- list
+				}
 			}
-		}(client, hubURL, gcl.codeLocationID, gcl.requestType)
+		}(client, hubURL, gcl.codeLocationID)
 	}
 
 	wg.Wait()
 	for i := 0; i < hubCount; i++ {
-		response := <-codeLocationsListCh
-		if response != nil {
-			log.Debugf("a hub responded with codelocation list: %+v", response)
-			gcl.mergeCodeLocationList(&codeLocations, response)
+		select {
+		case response := <-codeLocationsListCh:
+			if response != nil {
+				log.Debugf("a hub responded with codelocation list: %+v", response)
+				gcl.mergeCodeLocationList(&codeLocations, response)
+			}
+		case err := <-errCh:
+			errs.Errors[err.Host] = err.Err
 		}
 	}
 
-	getResponse := GetCodeLocationsResponse{
-		requestType:      gcl.requestType,
-		codeLocationID:   gcl.codeLocationID,
-		allCodeLocations: &codeLocations,
+	getResponse := GetResponse{
+		endPoint: gcl.endPoint,
+		id:       gcl.codeLocationID,
+		list:     &codeLocations,
 	}
+
+	fed.SetLastError(gcl.endPoint, &errs)
 
 	gcl.responseCh <- &getResponse
 	return nil
