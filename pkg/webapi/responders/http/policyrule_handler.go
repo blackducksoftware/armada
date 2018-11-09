@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	"github.com/blackducksoftware/armada/pkg/actions"
+	"github.com/blackducksoftware/armada/pkg/api"
 
 	"github.com/blackducksoftware/hub-client-go/hubapi"
 
@@ -44,12 +45,11 @@ func (resp *Responder) PolicyRulesHandler(w http.ResponseWriter, r *http.Request
 		if !ok {
 			// No specific policy rule was given, so this is a request for all policy rules
 			log.Info("retrieving all policy rules")
-			req = actions.NewGetPolicyRules(actions.PolicyRulesGetAll, policyRule)
 		} else {
 			// Look up the specific policy rule
 			log.Infof("retrieving policy rule %s", policyRule)
-			req = actions.NewGetPolicyRules(actions.PolicyRulesGetOne, policyRule)
 		}
+		req = actions.NewGetPolicyRules(policyRule, api.PolicyRulesEndpoint)
 		resp.sendHTTPResponse(req, w, r)
 	} else if r.Method == http.MethodPost {
 		// Create the policy rule
@@ -80,7 +80,8 @@ func (resp *Responder) AllPolicyRulesHandler(w http.ResponseWriter, r *http.Requ
 		} else {
 			// Look up the specific policy rule
 			log.Infof("retrieving policy rule %s", policyRule)
-			req = actions.NewGetPolicyRules(actions.PolicyRulesGetMany, policyRule)
+			//			req = actions.NewGetPolicyRules(actions.PolicyRulesGetMany, policyRule, api.AllPolicyRulesEndpoint)
+			req = actions.NewGetPolicyRules(policyRule, api.AllPolicyRulesEndpoint)
 		}
 		resp.sendHTTPResponse(req, w, r)
 	} else {

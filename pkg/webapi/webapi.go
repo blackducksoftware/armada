@@ -164,4 +164,5 @@ func SetupHTTPServer(responder responders.ResponderInterface, router *mux.Router
 	router.HandleFunc("/api/users", responder.UsersHandler)
 	router.HandleFunc("/api/users/{userId}", responder.UsersHandler)
 	router.HandleFunc("/api/all-users/{userId}", responder.AllUsersHandler)
+	router.HandleFunc("/api/lasterror", responder.LastErrorHandler)
 }

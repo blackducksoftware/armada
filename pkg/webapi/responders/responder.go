@@ -50,6 +50,7 @@ type ResponderInterface interface {
 	AllUsersHandler(w http.ResponseWriter, r *http.Request)
 	ComponentsHandler(w http.ResponseWriter, r *http.Request)
 	AllComponentsHandler(w http.ResponseWriter, r *http.Request)
+	LastErrorHandler(w http.ResponseWriter, r *http.Request)
 
 	// errors
 	NotFound(w http.ResponseWriter, r *http.Request)

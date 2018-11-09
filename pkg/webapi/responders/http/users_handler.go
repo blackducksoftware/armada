@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	"github.com/blackducksoftware/armada/pkg/actions"
+	"github.com/blackducksoftware/armada/pkg/api"
 
 	"github.com/blackducksoftware/hub-client-go/hubapi"
 
@@ -44,12 +45,11 @@ func (resp *Responder) UsersHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			// No specific user was given, so this is a request for all users
 			log.Info("retrieving all users")
-			req = actions.NewGetUsers(actions.UsersGetAll, user)
 		} else {
 			// Look up the specific user
 			log.Infof("retrieving user %s", user)
-			req = actions.NewGetUsers(actions.UsersGetOne, user)
 		}
+		req = actions.NewGetUsers(user, api.UsersEndpoint)
 		resp.sendHTTPResponse(req, w, r)
 	} else if r.Method == http.MethodPost {
 		// Create the user
@@ -76,7 +76,7 @@ func (resp *Responder) AllUsersHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Look up the specific user
 			log.Infof("retrieving user %s", user)
-			req = actions.NewGetUsers(actions.UsersGetMany, user)
+			req = actions.NewGetUsers(user, api.AllUsersEndpoint)
 		}
 		resp.sendHTTPResponse(req, w, r)
 	} else {

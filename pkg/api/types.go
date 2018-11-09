@@ -23,6 +23,8 @@ package api
 
 import (
 	"time"
+
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 )
 
 // ModelHub describes a hub client model
@@ -97,4 +99,28 @@ type HubConfig struct {
 // HubList is a list of Hub items
 type HubList struct {
 	Items []Hub `json:"items,omitempty"`
+}
+
+type EndpointType string
+
+const (
+	ComponentsEndpoint       EndpointType = "components"
+	AllComponentsEndpoint    EndpointType = "all-components"
+	ProjectsEndpoint         EndpointType = "projects"
+	AllProjectsEndpoint      EndpointType = "all-projects"
+	CodeLocationsEndpoint    EndpointType = "codelocations"
+	AllCodeLocationsEndpoint EndpointType = "all-codelocations"
+	PolicyRulesEndpoint      EndpointType = "policy-rules"
+	AllPolicyRulesEndpoint   EndpointType = "all-policy-rules"
+	UsersEndpoint            EndpointType = "users"
+	AllUsersEndpoint         EndpointType = "all-users"
+	LastErrorEndpoint        EndpointType = "lasterror"
+)
+
+type GetLastErrorRequest struct {
+	Endpoint EndpointType `json:"endpoint"`
+}
+
+type LastError struct {
+	Errors map[string]*hubclient.HubClientError
 }
