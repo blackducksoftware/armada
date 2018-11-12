@@ -22,7 +22,7 @@ under the License.
 package actions
 
 import (
-	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/blackducksoftware/armada/pkg/api"
@@ -37,95 +37,39 @@ import (
 // GetUsers handles retrieving users
 // from all the hubs known to the federator
 type GetUsers struct {
-	endPoint   api.EndpointType
-	userID     string
-	responseCh chan *GetResponse
+	BasicGetRequest
 }
 
 // NewGetUsers creates a new GetUsers object
 func NewGetUsers(id string, ep api.EndpointType) *GetUsers {
-	return &GetUsers{userID: id, endPoint: ep, responseCh: make(chan *GetResponse)}
+	return &GetUsers{BasicGetRequest{endPoint: ep, id: id, responseCh: make(chan *GetResponse)}}
 }
 
 // Execute will tell the provided federator to retrieve users
 func (gu *GetUsers) Execute(fed FederatorInterface) error {
-	var wg sync.WaitGroup
 	var users hubapi.UserList
-	var errs api.LastError
 
-	hubs := fed.GetHubs()
-	log.Debugf("GetUsers federator hubs: %+v", hubs)
-	hubCount := len(hubs)
-	usersListCh := make(chan *hubapi.UserList, hubCount)
-	errCh := make(chan HubError, hubCount)
-	errs.Errors = make(map[string]*hubclient.HubClientError)
-
-	wg.Add(hubCount)
-	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, id string) {
-			defer wg.Done()
-			if len(id) > 0 {
-				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/users/%s", url, id)}
-				log.Debugf("querying user %s", link.Href)
-				cl, err := client.GetUser(link)
-				log.Debugf("response to user query from %s: %+v", link.Href, cl)
-				if err != nil {
-					hubErr := err.(*hubclient.HubClientError)
-					errCh <- HubError{Host: url, Err: hubErr}
-				} else {
-					list := &hubapi.UserList{
-						TotalCount: 1,
-						Items:      []hubapi.User{*cl},
-					}
-					usersListCh <- list
-				}
-			} else {
-				log.Debugf("querying all users")
-				list, err := client.ListAllUsers()
-				if err != nil {
-					log.Warningf("failed to get users from %s: %v", url, err)
-					hubErr := err.(*hubclient.HubClientError)
-					errCh <- HubError{Host: url, Err: hubErr}
-				} else {
-					usersListCh <- list
-				}
+	funcs := api.GetFuncsType{
+		Get:    "GetUser",
+		GetAll: "ListAllUsers",
+		SingleToList: func(single interface{}) interface{} {
+			item := reflect.ValueOf(single).Interface()
+			list := hubapi.UserList{
+				TotalCount: 1,
+				Items:      []hubapi.User{*item.(*hubapi.User)},
 			}
-		}(client, hubURL, gu.userID)
+			return &list
+		},
 	}
+	fed.SendHubsGetRequest(gu.endPoint, funcs, gu.id, &users)
 
-	wg.Wait()
-	for i := 0; i < hubCount; i++ {
-		select {
-		case response := <-usersListCh:
-			if response != nil {
-				log.Debugf("a hub responded with user list: %+v", response)
-				gu.mergeUserList(&users, response)
-			}
-		case err := <-errCh:
-			errs.Errors[err.Host] = err.Err
-		}
-	}
-
-	getResponse := GetResponse{
+	gu.responseCh <- &GetResponse{
 		endPoint: gu.endPoint,
-		id:       gu.userID,
+		id:       gu.id,
 		list:     &users,
 	}
 
-	fed.SetLastError(gu.endPoint, &errs)
-
-	gu.responseCh <- &getResponse
 	return nil
-}
-
-func (gu *GetUsers) mergeUserList(origList, newList *hubapi.UserList) {
-	origList.TotalCount += newList.TotalCount
-	origList.Items = append(origList.Items, newList.Items...)
-}
-
-// GetResponse returns the response to the get users query
-func (gu *GetUsers) GetResponse() ActionResponseInterface {
-	return <-gu.responseCh
 }
 
 // CreateUser handles creating a user

@@ -23,6 +23,7 @@ package actions
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/blackducksoftware/armada/pkg/api"
@@ -37,97 +38,39 @@ import (
 // GetPolicyRules handles retrieving policy rules
 // from all the hubs known to the federator
 type GetPolicyRules struct {
-	endPoint     api.EndpointType
-	policyRuleID string
-	responseCh   chan *GetResponse
+	BasicGetRequest
 }
 
 // NewGetPolicyRules creates a new GetPolicyRules object
 func NewGetPolicyRules(id string, ep api.EndpointType) *GetPolicyRules {
-	return &GetPolicyRules{policyRuleID: id, responseCh: make(chan *GetResponse), endPoint: ep}
+	return &GetPolicyRules{BasicGetRequest{endPoint: ep, id: id, responseCh: make(chan *GetResponse)}}
 }
 
 // Execute will tell the provided federator to retrieve policy rules
 func (gpr *GetPolicyRules) Execute(fed FederatorInterface) error {
-	var wg sync.WaitGroup
 	var policyRules hubapi.PolicyRuleList
-	var errs api.LastError
 
-	hubs := fed.GetHubs()
-	log.Debugf("GetPolicyRules federator hubs: %+v", hubs)
-	hubCount := len(hubs)
-	policyRulesListCh := make(chan *hubapi.PolicyRuleList, hubCount)
-	errCh := make(chan HubError, hubCount)
-	errs.Errors = make(map[string]*hubclient.HubClientError)
-
-	wg.Add(hubCount)
-	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, id string) {
-			defer wg.Done()
-			if len(id) > 0 {
-				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/policy-rules/%s", url, id)}
-				log.Debugf("querying policy rule %s", link.Href)
-				p, err := client.GetPolicyRule(link)
-				log.Debugf("response to policy rule query from %s: %+v", link.Href, p)
-				if err != nil {
-					hubErr := err.(*hubclient.HubClientError)
-					errCh <- HubError{Host: url, Err: hubErr}
-				} else {
-					list := &hubapi.PolicyRuleList{
-						TotalCount: 1,
-						Items:      []hubapi.PolicyRule{*p},
-					}
-					policyRulesListCh <- list
-				}
-			} else {
-				log.Debugf("querying all policy rules")
-				list, err := client.ListAllPolicyRules()
-				if err != nil {
-					log.Warningf("failed to get policy rules from %s: %v", url, err)
-					hubErr := err.(*hubclient.HubClientError)
-					errCh <- HubError{Host: url, Err: hubErr}
-				} else {
-					policyRulesListCh <- list
-				}
+	funcs := api.GetFuncsType{
+		Get:    "GetPolicyRule",
+		GetAll: "ListAllPolicyRules",
+		SingleToList: func(single interface{}) interface{} {
+			item := reflect.ValueOf(single).Interface()
+			list := hubapi.PolicyRuleList{
+				TotalCount: 1,
+				Items:      []hubapi.PolicyRule{*item.(*hubapi.PolicyRule)},
 			}
-		}(client, hubURL, gpr.policyRuleID)
+			return &list
+		},
 	}
+	fed.SendHubsGetRequest(gpr.endPoint, funcs, gpr.id, &policyRules)
 
-	wg.Wait()
-	for i := 0; i < hubCount; i++ {
-		select {
-		case response := <-policyRulesListCh:
-			if response != nil {
-				log.Debugf("a hub responded with policy rule list: %+v", response)
-				gpr.mergePolicyRuleList(&policyRules, response)
-			}
-		case err := <-errCh:
-			errs.Errors[err.Host] = err.Err
-		}
-	}
-
-	getResponse := GetResponse{
+	gpr.responseCh <- &GetResponse{
 		endPoint: gpr.endPoint,
-		id:       gpr.policyRuleID,
+		id:       gpr.id,
 		list:     &policyRules,
 	}
 
-	fed.SetLastError(gpr.endPoint, &errs)
-
-	gpr.responseCh <- &getResponse
 	return nil
-}
-
-func (gpr *GetPolicyRules) mergePolicyRuleList(origList, newList *hubapi.PolicyRuleList) {
-	origList.TotalCount += newList.TotalCount
-	origList.Items = append(origList.Items, newList.Items...)
-	origList.Meta.Allow = append(origList.Meta.Allow, newList.Meta.Allow...)
-	origList.Meta.Links = append(origList.Meta.Links, newList.Meta.Links...)
-}
-
-// GetResponse returns the response to the get policy rules query
-func (gpr *GetPolicyRules) GetResponse() ActionResponseInterface {
-	return <-gpr.responseCh
 }
 
 // CreatePolicyRule handles creating a policy rule

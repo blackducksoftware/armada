@@ -101,6 +101,7 @@ type HubList struct {
 	Items []Hub `json:"items,omitempty"`
 }
 
+// EndpointType defines and endpoint
 type EndpointType string
 
 const (
@@ -117,10 +118,20 @@ const (
 	LastErrorEndpoint        EndpointType = "lasterror"
 )
 
+// GetLastErrorRequest defines a request to retrieve the last error
+// generated at an endpoint
 type GetLastErrorRequest struct {
 	Endpoint EndpointType `json:"endpoint"`
 }
 
+// LastError defines the errors various hubs returned for a given request
 type LastError struct {
 	Errors map[string]*hubclient.HubClientError
+}
+
+// GetFuncsType defines the functions used in a get request
+type GetFuncsType struct {
+	Get          string
+	GetAll       string
+	SingleToList func(interface{}) interface{}
 }
