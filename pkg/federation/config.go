@@ -23,7 +23,6 @@ package federation
 
 import (
 	"fmt"
-	//	"time"
 
 	"github.com/blackducksoftware/armada/pkg/api"
 

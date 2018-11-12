@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/blackducksoftware/armada/pkg/actions"
@@ -36,6 +37,9 @@ import (
 	"github.com/blackducksoftware/armada/pkg/webapi/responders"
 	httpresponder "github.com/blackducksoftware/armada/pkg/webapi/responders/http"
 	mockresponder "github.com/blackducksoftware/armada/pkg/webapi/responders/mock"
+
+	"github.com/blackducksoftware/hub-client-go/hubapi"
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -182,10 +186,112 @@ func (fed *Federator) GetHubs() map[string]*hub.Client {
 	return fed.hubs
 }
 
+// SetLastError will set the last error information for a provided endpoint
 func (fed *Federator) SetLastError(endPoint api.EndpointType, lastError *api.LastError) {
 	fed.lastErrors[endPoint] = lastError
 }
 
+// GetLastError will retrieve the last error information for a provided endpoint
 func (fed *Federator) GetLastError(endPoint api.EndpointType) *api.LastError {
 	return fed.lastErrors[endPoint]
+}
+
+// SendHubsGetRequest will retrieve information from the hubs
+func (fed *Federator) SendHubsGetRequest(endpoint api.EndpointType, funcs api.GetFuncsType, objID string, result interface{}) {
+	var wg sync.WaitGroup
+	var errs api.LastError
+
+	hubCount := len(fed.hubs)
+	resultCh := make(chan interface{}, hubCount)
+	errCh := make(chan actions.HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
+
+	wg.Add(hubCount)
+	for hubURL, client := range fed.hubs {
+		go func(client *hub.Client, url string, id string, ep api.EndpointType, funcs api.GetFuncsType) {
+			defer wg.Done()
+			strEp := string(ep)
+			if len(id) > 0 {
+				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/%s/%s", url, actions.ConvertAllEndpoint(ep), id)}
+				log.Debugf("querying %s %s", strEp, link.Href)
+				hubFunc := fed.getHubClientFunc(funcs.Get, client)
+				callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(link)})
+				resp := callResp[0].Interface()
+				err := callResp[1].Interface()
+				log.Debugf("response to %s query from %s: %+v", strEp, link.Href, resp)
+				if err != nil {
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- actions.HubError{Host: url, Err: hubErr}
+				} else {
+					list := funcs.SingleToList(resp)
+					resultCh <- &list
+				}
+			} else {
+				log.Debugf("querying all %s", strEp)
+				hubFunc := fed.getHubClientFunc(funcs.GetAll, client)
+				callResp := hubFunc.Call([]reflect.Value{})
+				resp := callResp[0].Interface()
+				err := callResp[1].Interface()
+				if err != nil {
+					log.Warningf("failed to get %s from %s: %v", strEp, url, err)
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- actions.HubError{Host: url, Err: hubErr}
+				} else {
+					resultCh <- &resp
+				}
+			}
+		}(client, hubURL, objID, endpoint, funcs)
+	}
+
+	wg.Wait()
+	for i := 0; i < hubCount; i++ {
+		select {
+		case response := <-resultCh:
+			if response != nil {
+				value := reflect.ValueOf(response).Elem().Interface()
+				log.Debugf("request to endpoint %s on a hub responded with: %+v", actions.ConvertAllEndpoint(endpoint), value)
+				fed.mergeHubList(result, value)
+			}
+		case err := <-errCh:
+			errs.Errors[err.Host] = err.Err
+		}
+	}
+
+	fed.SetLastError(endpoint, &errs)
+}
+
+func (fed *Federator) getHubClientFunc(name string, hubClient *hub.Client) reflect.Value {
+	return reflect.ValueOf(hubClient).MethodByName(name)
+}
+
+func (fed *Federator) mergeHubList(orig interface{}, new interface{}) {
+	log.Debugf("mergeHubList orig: %+v", orig)
+	log.Debugf("mergeHubList new: %+v", new)
+
+	// Merge TotalCount first
+	origCount := fed.getHubListField(orig, "TotalCount")
+	newCount := fed.getHubListField(new, "TotalCount")
+	origCount.SetUint(origCount.Uint() + newCount.Uint())
+
+	// Merge Items
+	origItems := fed.getHubListField(orig, "Items")
+	newItems := fed.getHubListField(new, "Items")
+	origItems.Set(reflect.AppendSlice(origItems, newItems))
+
+	// Merge Meta if it exists
+	origMeta := fed.getHubListField(orig, "Meta")
+	if origMeta.IsValid() {
+		newMeta := fed.getHubListField(new, "Meta")
+		origAllow := origMeta.FieldByName("Allow")
+		newAllow := newMeta.FieldByName("Allow")
+		origMeta.FieldByName("Allow").Set(reflect.AppendSlice(origAllow, newAllow))
+
+		origLinks := origMeta.FieldByName("Links")
+		newLinks := newMeta.FieldByName("Links")
+		origMeta.FieldByName("Links").Set(reflect.AppendSlice(origLinks, newLinks))
+	}
+}
+
+func (fed *Federator) getHubListField(list interface{}, field string) reflect.Value {
+	return reflect.ValueOf(list).Elem().FieldByName(field)
 }

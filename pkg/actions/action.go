@@ -53,6 +53,7 @@ type FederatorInterface interface {
 	GetHubs() map[string]*hub.Client
 	SetLastError(api.EndpointType, *api.LastError)
 	GetLastError(api.EndpointType) *api.LastError
+	SendHubsGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
 }
 
 // EmptyResponse is a generic response to a request which
@@ -67,11 +68,25 @@ func (cr *EmptyResponse) GetResult() interface{} {
 	return nil
 }
 
+// HubError defines an error from a hub
 type HubError struct {
 	Host string
 	Err  *hubclient.HubClientError
 }
 
+// BasicGetRequest defines common elements of a get request
+type BasicGetRequest struct {
+	endPoint   api.EndpointType
+	id         string
+	responseCh chan *GetResponse
+}
+
+// GetResponse returns the response to the get policy rules query
+func (gpr *BasicGetRequest) GetResponse() ActionResponseInterface {
+	return <-gpr.responseCh
+}
+
+// GetResponse defines a generic response for a get request
 type GetResponse struct {
 	endPoint api.EndpointType
 	id       string
@@ -108,4 +123,10 @@ func (gr *GetResponse) GetResult() interface{} {
 		return reflect.ValueOf(gr.list).Elem().FieldByName("Items").Index(0).Interface()
 	}
 	return gr.list
+}
+
+// ConvertAllEndpoint will take an endpoint starting with the prefix "all-" and return
+// the proper hub endpoint
+func ConvertAllEndpoint(endPoint api.EndpointType) string {
+	return strings.TrimPrefix(string(endPoint), "all-")
 }
