@@ -196,8 +196,8 @@ func (fed *Federator) GetLastError(endPoint api.EndpointType) *api.LastError {
 	return fed.lastErrors[endPoint]
 }
 
-// SendHubsGetRequest will retrieve information from the hubs
-func (fed *Federator) SendHubsGetRequest(endpoint api.EndpointType, funcs api.GetFuncsType, objID string, result interface{}) {
+// SendGetRequest will retrieve information from the hubs
+func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFuncsType, objID string, result interface{}) {
 	var wg sync.WaitGroup
 	var errs api.LastError
 
@@ -210,9 +210,9 @@ func (fed *Federator) SendHubsGetRequest(endpoint api.EndpointType, funcs api.Ge
 	for hubURL, client := range fed.hubs {
 		go func(client *hub.Client, url string, id string, ep api.EndpointType, funcs api.GetFuncsType) {
 			defer wg.Done()
-			strEp := string(ep)
+			strEp := actions.ConvertAllEndpoint(ep)
 			if len(id) > 0 {
-				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/%s/%s", url, actions.ConvertAllEndpoint(ep), id)}
+				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/%s/%s", url, strEp, id)}
 				log.Debugf("querying %s %s", strEp, link.Href)
 				hubFunc := fed.getHubClientFunc(funcs.Get, client)
 				callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(link)})
@@ -249,7 +249,7 @@ func (fed *Federator) SendHubsGetRequest(endpoint api.EndpointType, funcs api.Ge
 		case response := <-resultCh:
 			if response != nil {
 				value := reflect.ValueOf(response).Elem().Interface()
-				log.Debugf("request to endpoint %s on a hub responded with: %+v", actions.ConvertAllEndpoint(endpoint), value)
+				log.Debugf("a hub responsed to a get request to endpoint %s with: %+v", actions.ConvertAllEndpoint(endpoint), value)
 				fed.mergeHubList(result, value)
 			}
 		case err := <-errCh:
@@ -294,4 +294,50 @@ func (fed *Federator) mergeHubList(orig interface{}, new interface{}) {
 
 func (fed *Federator) getHubListField(list interface{}, field string) reflect.Value {
 	return reflect.ValueOf(list).Elem().FieldByName(field)
+}
+
+// SendCreateRequest will tell the provided federator to create objects in all hubs
+func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc string, request interface{}) {
+	var wg sync.WaitGroup
+	var errs api.LastError
+
+	hubCount := len(fed.hubs)
+	resultCh := make(chan interface{}, hubCount)
+	errCh := make(chan actions.HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
+
+	wg.Add(hubCount)
+	for hubURL, client := range fed.hubs {
+		go func(client *hub.Client, url string, ep api.EndpointType, createF string, req interface{}) {
+			defer wg.Done()
+			strEp := actions.ConvertAllEndpoint(ep)
+			log.Debugf("creating %s %+v", strEp, req)
+			hubFunc := fed.getHubClientFunc(createF, client)
+			callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(req)})
+			resp := callResp[0].Interface()
+			err := callResp[1].Interface()
+			if err != nil {
+				log.Warningf("failed to create %s in %s: %v", strEp, url, err)
+				hubErr := err.(*hubclient.HubClientError)
+				errCh <- actions.HubError{Host: url, Err: hubErr}
+			} else {
+				resultCh <- &resp
+			}
+		}(client, hubURL, endpoint, createFunc, request)
+	}
+
+	wg.Wait()
+	for i := 0; i < hubCount; i++ {
+		select {
+		case response := <-resultCh:
+			if response != nil {
+				value := reflect.ValueOf(response).Elem().Interface()
+				log.Debugf("a hub responded to create request to endpoint %s with: %+v", string(endpoint), value)
+			}
+		case err := <-errCh:
+			errs.Errors[err.Host] = err.Err
+		}
+	}
+
+	fed.SetLastError(endpoint, &errs)
 }

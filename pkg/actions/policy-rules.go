@@ -62,7 +62,7 @@ func (gpr *GetPolicyRules) Execute(fed FederatorInterface) error {
 			return &list
 		},
 	}
-	fed.SendHubsGetRequest(gpr.endPoint, funcs, gpr.id, &policyRules)
+	fed.SendGetRequest(gpr.endPoint, funcs, gpr.id, &policyRules)
 
 	gpr.responseCh <- &GetResponse{
 		endPoint: gpr.endPoint,
@@ -76,66 +76,19 @@ func (gpr *GetPolicyRules) Execute(fed FederatorInterface) error {
 // CreatePolicyRule handles creating a policy rule
 // in all the hubs known to the federator
 type CreatePolicyRule struct {
-	request    *hubapi.PolicyRuleRequest
-	responseCh chan *EmptyResponse
+	BasicCreateRequest
 }
 
 // NewCreatePolicyRule creates a new CreatePolicyRule object
 func NewCreatePolicyRule(r *hubapi.PolicyRuleRequest) *CreatePolicyRule {
-	return &CreatePolicyRule{request: r, responseCh: make(chan *EmptyResponse)}
+	return &CreatePolicyRule{BasicCreateRequest{request: r, responseCh: make(chan *EmptyResponse)}}
 }
 
 // Execute will tell the provided federator to create the policy rule in all hubs
 func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
-	var wg sync.WaitGroup
-	var policyRules []string
-	var errs api.LastError
-
-	hubs := fed.GetHubs()
-	log.Debugf("CreatePolicyRule federator hubs: %+v", hubs)
-	hubCount := len(hubs)
-	policyRulesCh := make(chan string, hubCount)
-	errCh := make(chan HubError, hubCount)
-	errs.Errors = make(map[string]*hubclient.HubClientError)
-
-	wg.Add(hubCount)
-	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, req *hubapi.PolicyRuleRequest) {
-			defer wg.Done()
-			log.Debugf("creating policy rule %s", req.Name)
-			pr, err := client.CreatePolicyRule(req)
-			if err != nil {
-				log.Warningf("failed to create policy rule %s in %s: %v", req.Name, url, err)
-				hubErr := err.(*hubclient.HubClientError)
-				errCh <- HubError{Host: url, Err: hubErr}
-			} else {
-				policyRulesCh <- pr
-			}
-		}(client, hubURL, cpr.request)
-	}
-
-	wg.Wait()
-	for i := 0; i < hubCount; i++ {
-		select {
-		case response := <-policyRulesCh:
-			if len(response) > 0 {
-				log.Debugf("a hub responded with policy rule: %+v", response)
-				policyRules = append(policyRules, response)
-			}
-		case err := <-errCh:
-			errs.Errors[err.Host] = err.Err
-		}
-	}
-
-	fed.SetLastError(api.PolicyRulesEndpoint, &errs)
-
+	fed.SendCreateRequest(api.PolicyRulesEndpoint, "CreatePolicyRule", cpr.request)
 	cpr.responseCh <- &EmptyResponse{}
 	return nil
-}
-
-// GetResponse returns the response to the create policy rules request
-func (cpr *CreatePolicyRule) GetResponse() ActionResponseInterface {
-	return <-cpr.responseCh
 }
 
 // DeletePolicyRule handles deleting a policy rule

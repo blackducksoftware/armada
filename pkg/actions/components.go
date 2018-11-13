@@ -56,7 +56,7 @@ func (gc *GetComponents) Execute(fed FederatorInterface) error {
 			return &list
 		},
 	}
-	fed.SendHubsGetRequest(gc.endPoint, funcs, gc.id, &components)
+	fed.SendGetRequest(gc.endPoint, funcs, gc.id, &components)
 
 	gc.responseCh <- &GetResponse{
 		endPoint: gc.endPoint,

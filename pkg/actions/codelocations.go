@@ -56,7 +56,7 @@ func (gcl *GetCodeLocations) Execute(fed FederatorInterface) error {
 			return &list
 		},
 	}
-	fed.SendHubsGetRequest(gcl.endPoint, funcs, gcl.id, &codeLocations)
+	fed.SendGetRequest(gcl.endPoint, funcs, gcl.id, &codeLocations)
 
 	gcl.responseCh <- &GetResponse{
 		endPoint: gcl.endPoint,
