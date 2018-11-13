@@ -23,15 +23,10 @@ package actions
 
 import (
 	"reflect"
-	"sync"
 
 	"github.com/blackducksoftware/armada/pkg/api"
-	"github.com/blackducksoftware/armada/pkg/hub"
 
 	"github.com/blackducksoftware/hub-client-go/hubapi"
-	"github.com/blackducksoftware/hub-client-go/hubclient"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // GetUsers handles retrieving users
@@ -61,7 +56,7 @@ func (gu *GetUsers) Execute(fed FederatorInterface) error {
 			return &list
 		},
 	}
-	fed.SendHubsGetRequest(gu.endPoint, funcs, gu.id, &users)
+	fed.SendGetRequest(gu.endPoint, funcs, gu.id, &users)
 
 	gu.responseCh <- &GetResponse{
 		endPoint: gu.endPoint,
@@ -75,62 +70,17 @@ func (gu *GetUsers) Execute(fed FederatorInterface) error {
 // CreateUser handles creating a user
 // in all the hubs known to the federator
 type CreateUser struct {
-	request    *hubapi.UserRequest
-	responseCh chan *EmptyResponse
+	BasicCreateRequest
 }
 
 // NewCreateUser creates a new CreateUser object
 func NewCreateUser(r *hubapi.UserRequest) *CreateUser {
-	return &CreateUser{request: r, responseCh: make(chan *EmptyResponse)}
+	return &CreateUser{BasicCreateRequest{request: r, responseCh: make(chan *EmptyResponse)}}
 }
 
 // Execute will tell the provided federator to create the user in all hubs
 func (cu *CreateUser) Execute(fed FederatorInterface) error {
-	var wg sync.WaitGroup
-	var errs api.LastError
-
-	hubs := fed.GetHubs()
-	log.Debugf("CreateUser federator hubs: %+v", hubs)
-	hubCount := len(hubs)
-	usersCh := make(chan *hubapi.User, hubCount)
-	errCh := make(chan HubError, hubCount)
-	errs.Errors = make(map[string]*hubclient.HubClientError)
-
-	wg.Add(hubCount)
-	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, req *hubapi.UserRequest) {
-			defer wg.Done()
-			log.Debugf("creating user %s", req.UserName)
-			user, err := client.CreateUser(req)
-			if err != nil {
-				log.Warningf("failed to create user %s in %s: %v", req.UserName, url, err)
-				hubErr := err.(*hubclient.HubClientError)
-				errCh <- HubError{Host: url, Err: hubErr}
-			} else {
-				usersCh <- user
-			}
-		}(client, hubURL, cu.request)
-	}
-
-	wg.Wait()
-	for i := 0; i < hubCount; i++ {
-		select {
-		case response := <-usersCh:
-			if response != nil {
-				log.Debugf("a hub responded with user: %+v", response)
-			}
-		case err := <-errCh:
-			errs.Errors[err.Host] = err.Err
-		}
-	}
-
-	fed.SetLastError(api.UsersEndpoint, &errs)
-
+	fed.SendCreateRequest(api.UsersEndpoint, "CreateUser", cu.request)
 	cu.responseCh <- &EmptyResponse{}
 	return nil
-}
-
-// GetResponse returns the response to the create users query
-func (cu *CreateUser) GetResponse() ActionResponseInterface {
-	return <-cu.responseCh
 }

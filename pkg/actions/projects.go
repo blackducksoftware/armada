@@ -56,7 +56,7 @@ func (gp *GetProjects) Execute(fed FederatorInterface) error {
 			return &list
 		},
 	}
-	fed.SendHubsGetRequest(gp.endPoint, funcs, gp.id, &projects)
+	fed.SendGetRequest(gp.endPoint, funcs, gp.id, &projects)
 
 	gp.responseCh <- &GetResponse{
 		endPoint: gp.endPoint,

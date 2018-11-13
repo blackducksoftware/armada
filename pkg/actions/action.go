@@ -53,7 +53,8 @@ type FederatorInterface interface {
 	GetHubs() map[string]*hub.Client
 	SetLastError(api.EndpointType, *api.LastError)
 	GetLastError(api.EndpointType) *api.LastError
-	SendHubsGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
+	SendGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
+	SendCreateRequest(api.EndpointType, string, interface{})
 }
 
 // EmptyResponse is a generic response to a request which
@@ -81,7 +82,7 @@ type BasicGetRequest struct {
 	responseCh chan *GetResponse
 }
 
-// GetResponse returns the response to the get policy rules query
+// GetResponse returns the response to the get request
 func (gpr *BasicGetRequest) GetResponse() ActionResponseInterface {
 	return <-gpr.responseCh
 }
@@ -129,4 +130,15 @@ func (gr *GetResponse) GetResult() interface{} {
 // the proper hub endpoint
 func ConvertAllEndpoint(endPoint api.EndpointType) string {
 	return strings.TrimPrefix(string(endPoint), "all-")
+}
+
+// BasicCreateRequest defines common elements of a create request
+type BasicCreateRequest struct {
+	request    interface{}
+	responseCh chan *EmptyResponse
+}
+
+// GetResponse returns the response to the create request
+func (gpr *BasicCreateRequest) GetResponse() ActionResponseInterface {
+	return <-gpr.responseCh
 }
