@@ -51,10 +51,10 @@ type FederatorInterface interface {
 	CreateHubClients(*api.HubList)
 	AddHub(string, *hub.Client)
 	GetHubs() map[string]*hub.Client
-	SetLastError(api.EndpointType, *api.LastError)
 	GetLastError(api.EndpointType) *api.LastError
 	SendGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
 	SendCreateRequest(api.EndpointType, string, interface{})
+	SendDeleteRequest(api.EndpointType, string, string)
 }
 
 // EmptyResponse is a generic response to a request which
@@ -140,5 +140,16 @@ type BasicCreateRequest struct {
 
 // GetResponse returns the response to the create request
 func (gpr *BasicCreateRequest) GetResponse() ActionResponseInterface {
+	return <-gpr.responseCh
+}
+
+// BasicDeleteRequest defines common elements of a delete request
+type BasicDeleteRequest struct {
+	id         string
+	responseCh chan *EmptyResponse
+}
+
+// GetResponse returns the response to the delete request
+func (gpr *BasicDeleteRequest) GetResponse() ActionResponseInterface {
 	return <-gpr.responseCh
 }

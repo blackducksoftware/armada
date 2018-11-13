@@ -22,17 +22,11 @@ under the License.
 package actions
 
 import (
-	"fmt"
 	"reflect"
-	"sync"
 
 	"github.com/blackducksoftware/armada/pkg/api"
-	"github.com/blackducksoftware/armada/pkg/hub"
 
 	"github.com/blackducksoftware/hub-client-go/hubapi"
-	"github.com/blackducksoftware/hub-client-go/hubclient"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // GetPolicyRules handles retrieving policy rules
@@ -94,56 +88,17 @@ func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
 // DeletePolicyRule handles deleting a policy rule
 // in all the hubs known to the federator
 type DeletePolicyRule struct {
-	policyRuleID string
-	responseCh   chan *EmptyResponse
+	BasicDeleteRequest
 }
 
 // NewDeletePolicyRule creates a new DeletePolicyRule object
 func NewDeletePolicyRule(id string) *DeletePolicyRule {
-	return &DeletePolicyRule{policyRuleID: id, responseCh: make(chan *EmptyResponse)}
+	return &DeletePolicyRule{BasicDeleteRequest{id: id, responseCh: make(chan *EmptyResponse)}}
 }
 
 // Execute will tell the provided federator to delete the policy rule in all hubs
 func (dpr *DeletePolicyRule) Execute(fed FederatorInterface) error {
-	var wg sync.WaitGroup
-	var errs api.LastError
-
-	hubs := fed.GetHubs()
-	log.Debugf("DeletePolicyRule federator hubs: %+v", hubs)
-	hubCount := len(hubs)
-	errCh := make(chan HubError, hubCount)
-	errs.Errors = make(map[string]*hubclient.HubClientError)
-
-	wg.Add(hubCount)
-	for hubURL, client := range hubs {
-		go func(client *hub.Client, url string, id string) {
-			defer wg.Done()
-			log.Debugf("deleting policy rule %s from hub %s", id, url)
-			loc := fmt.Sprintf("https://%s/api/policy-rules/%s", url, id)
-			err := client.DeletePolicyRule(loc)
-			if err != nil {
-				log.Warningf("failed to delete policy rule %s in %s: %v", id, url, err)
-			}
-			hubErr := err.(*hubclient.HubClientError)
-			errCh <- HubError{Host: url, Err: hubErr}
-		}(client, hubURL, dpr.policyRuleID)
-	}
-	wg.Wait()
-
-	for i := 0; i < hubCount; i++ {
-		err := <-errCh
-		if err.Err != nil {
-			errs.Errors[err.Host] = err.Err
-		}
-	}
-
-	fed.SetLastError(api.PolicyRulesEndpoint, &errs)
-
+	fed.SendDeleteRequest(api.PolicyRulesEndpoint, "DeletePolicyRule", dpr.id)
 	dpr.responseCh <- &EmptyResponse{}
 	return nil
-}
-
-// GetResponse returns the response to the delete policy rules request
-func (dpr *DeletePolicyRule) GetResponse() ActionResponseInterface {
-	return <-dpr.responseCh
 }

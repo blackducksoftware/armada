@@ -186,8 +186,7 @@ func (fed *Federator) GetHubs() map[string]*hub.Client {
 	return fed.hubs
 }
 
-// SetLastError will set the last error information for a provided endpoint
-func (fed *Federator) SetLastError(endPoint api.EndpointType, lastError *api.LastError) {
+func (fed *Federator) setLastError(endPoint api.EndpointType, lastError *api.LastError) {
 	fed.lastErrors[endPoint] = lastError
 }
 
@@ -257,7 +256,7 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 		}
 	}
 
-	fed.SetLastError(endpoint, &errs)
+	fed.setLastError(endpoint, &errs)
 }
 
 func (fed *Federator) getHubClientFunc(name string, hubClient *hub.Client) reflect.Value {
@@ -296,7 +295,7 @@ func (fed *Federator) getHubListField(list interface{}, field string) reflect.Va
 	return reflect.ValueOf(list).Elem().FieldByName(field)
 }
 
-// SendCreateRequest will tell the provided federator to create objects in all hubs
+// SendCreateRequest create information in the hubs
 func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc string, request interface{}) {
 	var wg sync.WaitGroup
 	var errs api.LastError
@@ -339,5 +338,45 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 		}
 	}
 
-	fed.SetLastError(endpoint, &errs)
+	fed.setLastError(endpoint, &errs)
+}
+
+// SendDeleteRequest will delete information from the hubs
+func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc string, id string) {
+	var wg sync.WaitGroup
+	var errs api.LastError
+
+	hubCount := len(fed.hubs)
+	errCh := make(chan actions.HubError, hubCount)
+	errs.Errors = make(map[string]*hubclient.HubClientError)
+
+	wg.Add(hubCount)
+	for hubURL, client := range fed.hubs {
+		go func(client *hub.Client, url string, id string, ep api.EndpointType, deleteF string) {
+			strEp := actions.ConvertAllEndpoint(ep)
+			defer wg.Done()
+			log.Debugf("deleting %s %s from hub %s", strEp, id, url)
+			loc := fmt.Sprintf("https://%s/api/%s/%s", url, strEp, id)
+			hubFunc := fed.getHubClientFunc(deleteF, client)
+			callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(loc)})
+			err := callResp[0].Interface()
+			if err != nil {
+				log.Warningf("failed to delete %s %s in %s: %v", strEp, id, url, err)
+				hubErr := err.(*hubclient.HubClientError)
+				errCh <- actions.HubError{Host: url, Err: hubErr}
+			} else {
+				errCh <- actions.HubError{Host: url, Err: nil}
+			}
+		}(client, hubURL, id, endpoint, deleteFunc)
+	}
+	wg.Wait()
+
+	for i := 0; i < hubCount; i++ {
+		err := <-errCh
+		if err.Err != nil {
+			errs.Errors[err.Host] = err.Err
+		}
+	}
+
+	fed.setLastError(endpoint, &errs)
 }
