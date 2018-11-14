@@ -43,19 +43,20 @@ func (resp *GetLastErrorResponse) GetResult() interface{} {
 // GetLastError handles creating a policy rule
 // in all the hubs known to the federator
 type GetLastError struct {
-	request    *api.GetLastErrorRequest
+	endpoint   api.EndpointType
+	method     string
 	responseCh chan *GetLastErrorResponse
 }
 
 // NewGetLastError creates a new GetLastError object
-func NewGetLastError(r *api.GetLastErrorRequest) *GetLastError {
-	return &GetLastError{request: r, responseCh: make(chan *GetLastErrorResponse)}
+func NewGetLastError(meth string, ep api.EndpointType) *GetLastError {
+	return &GetLastError{endpoint: ep, method: meth, responseCh: make(chan *GetLastErrorResponse)}
 }
 
 // Execute will retrieve the last error from the provided federator
 func (gle *GetLastError) Execute(fed FederatorInterface) error {
 	resp := GetLastErrorResponse{
-		response: fed.GetLastError(gle.request.Endpoint),
+		response: fed.GetLastError(gle.method, gle.endpoint),
 	}
 
 	gle.responseCh <- &resp

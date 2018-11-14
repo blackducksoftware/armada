@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,11 @@ const (
 	actionChannelSize = 100
 )
 
+type hubError struct {
+	Host string
+	Err  *hubclient.HubClientError
+}
+
 // Federator handles federating queries across multiple hubs
 type Federator struct {
 	responder  responders.ResponderInterface
@@ -61,7 +67,7 @@ type Federator struct {
 	// model
 	config     *FederatorConfig
 	hubs       map[string]*hub.Client
-	lastErrors map[api.EndpointType]*api.LastError
+	lastErrors map[api.EndpointType]map[string]*api.LastError
 
 	// channels
 	stop    chan struct{}
@@ -115,7 +121,7 @@ func NewFederator(configPath string) (*Federator, error) {
 		hubs:       map[string]*hub.Client{},
 		stop:       make(chan struct{}),
 		actions:    make(chan actions.ActionInterface, actionChannelSize),
-		lastErrors: map[api.EndpointType]*api.LastError{},
+		lastErrors: map[api.EndpointType]map[string]*api.LastError{},
 	}
 
 	return fed, nil
@@ -186,13 +192,16 @@ func (fed *Federator) GetHubs() map[string]*hub.Client {
 	return fed.hubs
 }
 
-func (fed *Federator) setLastError(endPoint api.EndpointType, lastError *api.LastError) {
-	fed.lastErrors[endPoint] = lastError
+func (fed *Federator) setLastError(method string, endPoint api.EndpointType, lastError *api.LastError) {
+	if _, ok := fed.lastErrors[endPoint]; !ok {
+		fed.lastErrors[endPoint] = make(map[string]*api.LastError)
+	}
+	fed.lastErrors[endPoint][method] = lastError
 }
 
 // GetLastError will retrieve the last error information for a provided endpoint
-func (fed *Federator) GetLastError(endPoint api.EndpointType) *api.LastError {
-	return fed.lastErrors[endPoint]
+func (fed *Federator) GetLastError(method string, endPoint api.EndpointType) *api.LastError {
+	return fed.lastErrors[endPoint][strings.ToUpper(method)]
 }
 
 // SendGetRequest will retrieve information from the hubs
@@ -202,7 +211,7 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 
 	hubCount := len(fed.hubs)
 	resultCh := make(chan interface{}, hubCount)
-	errCh := make(chan actions.HubError, hubCount)
+	errCh := make(chan hubError, hubCount)
 	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
@@ -220,7 +229,7 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 				log.Debugf("response to %s query from %s: %+v", strEp, link.Href, resp)
 				if err != nil {
 					hubErr := err.(*hubclient.HubClientError)
-					errCh <- actions.HubError{Host: url, Err: hubErr}
+					errCh <- hubError{Host: url, Err: hubErr}
 				} else {
 					list := funcs.SingleToList(resp)
 					resultCh <- &list
@@ -234,7 +243,7 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 				if err != nil {
 					log.Warningf("failed to get %s from %s: %v", strEp, url, err)
 					hubErr := err.(*hubclient.HubClientError)
-					errCh <- actions.HubError{Host: url, Err: hubErr}
+					errCh <- hubError{Host: url, Err: hubErr}
 				} else {
 					resultCh <- &resp
 				}
@@ -256,7 +265,7 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 		}
 	}
 
-	fed.setLastError(endpoint, &errs)
+	fed.setLastError(http.MethodGet, endpoint, &errs)
 }
 
 func (fed *Federator) getHubClientFunc(name string, hubClient *hub.Client) reflect.Value {
@@ -302,7 +311,7 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 
 	hubCount := len(fed.hubs)
 	resultCh := make(chan interface{}, hubCount)
-	errCh := make(chan actions.HubError, hubCount)
+	errCh := make(chan hubError, hubCount)
 	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
@@ -318,7 +327,7 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 			if err != nil {
 				log.Warningf("failed to create %s in %s: %v", strEp, url, err)
 				hubErr := err.(*hubclient.HubClientError)
-				errCh <- actions.HubError{Host: url, Err: hubErr}
+				errCh <- hubError{Host: url, Err: hubErr}
 			} else {
 				resultCh <- &resp
 			}
@@ -338,7 +347,7 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 		}
 	}
 
-	fed.setLastError(endpoint, &errs)
+	fed.setLastError(http.MethodPost, endpoint, &errs)
 }
 
 // SendDeleteRequest will delete information from the hubs
@@ -347,7 +356,7 @@ func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc st
 	var errs api.LastError
 
 	hubCount := len(fed.hubs)
-	errCh := make(chan actions.HubError, hubCount)
+	errCh := make(chan hubError, hubCount)
 	errs.Errors = make(map[string]*hubclient.HubClientError)
 
 	wg.Add(hubCount)
@@ -363,9 +372,9 @@ func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc st
 			if err != nil {
 				log.Warningf("failed to delete %s %s in %s: %v", strEp, id, url, err)
 				hubErr := err.(*hubclient.HubClientError)
-				errCh <- actions.HubError{Host: url, Err: hubErr}
+				errCh <- hubError{Host: url, Err: hubErr}
 			} else {
-				errCh <- actions.HubError{Host: url, Err: nil}
+				errCh <- hubError{Host: url, Err: nil}
 			}
 		}(client, hubURL, id, endpoint, deleteFunc)
 	}
@@ -378,5 +387,5 @@ func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc st
 		}
 	}
 
-	fed.setLastError(endpoint, &errs)
+	fed.setLastError(http.MethodDelete, endpoint, &errs)
 }
