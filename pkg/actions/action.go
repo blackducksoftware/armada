@@ -28,8 +28,6 @@ import (
 
 	"github.com/blackducksoftware/armada/pkg/api"
 	"github.com/blackducksoftware/armada/pkg/hub"
-
-	"github.com/blackducksoftware/hub-client-go/hubclient"
 )
 
 // ActionInterface defines an interface for actions of the federator
@@ -51,7 +49,7 @@ type FederatorInterface interface {
 	CreateHubClients(*api.HubList)
 	AddHub(string, *hub.Client)
 	GetHubs() map[string]*hub.Client
-	GetLastError(api.EndpointType) *api.LastError
+	GetLastError(string, api.EndpointType) *api.LastError
 	SendGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
 	SendCreateRequest(api.EndpointType, string, interface{})
 	SendDeleteRequest(api.EndpointType, string, string)
@@ -67,12 +65,6 @@ func (cr *EmptyResponse) ReplaceSource(string) {}
 // GetResult returns nothing for the generic response
 func (cr *EmptyResponse) GetResult() interface{} {
 	return nil
-}
-
-// HubError defines an error from a hub
-type HubError struct {
-	Host string
-	Err  *hubclient.HubClientError
 }
 
 // BasicGetRequest defines common elements of a get request

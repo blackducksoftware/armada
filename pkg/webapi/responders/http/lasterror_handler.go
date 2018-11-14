@@ -32,14 +32,12 @@ import (
 // LastErrorHandler will process requests for the lasterror endoint
 func (resp *Responder) LastErrorHandler(w http.ResponseWriter, r *http.Request) {
 	var req actions.ActionInterface
+	endPoint := r.FormValue("endpoint")
+	method := r.FormValue("method")
 
-	if r.Method == http.MethodPost {
-		var request api.GetLastErrorRequest
-		ok := resp.unmarshalRequest(w, r, &request)
-		if ok {
-			req = actions.NewGetLastError(&request)
-			resp.sendHTTPResponse(req, w, r)
-		}
+	if r.Method == http.MethodGet {
+		req = actions.NewGetLastError(method, api.EndpointType(endPoint))
+		resp.sendHTTPResponse(req, w, r)
 	} else {
 		resp.Error(w, r, fmt.Errorf("unsupported method %s", r.Method), 405)
 	}
