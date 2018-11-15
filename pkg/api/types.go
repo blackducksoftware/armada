@@ -23,8 +23,6 @@ package api
 
 import (
 	"time"
-
-	"github.com/blackducksoftware/hub-client-go/hubclient"
 )
 
 // ModelHub describes a hub client model
@@ -117,11 +115,6 @@ const (
 	AllUsersEndpoint         EndpointType = "all-users"
 	LastErrorEndpoint        EndpointType = "lasterror"
 )
-
-// LastError defines the errors various hubs returned for a given request
-type LastError struct {
-	Errors map[string]*hubclient.HubClientError
-}
 
 // GetFuncsType defines the functions used in a get request
 type GetFuncsType struct {

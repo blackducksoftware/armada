@@ -28,6 +28,8 @@ import (
 
 	"github.com/blackducksoftware/armada/pkg/api"
 	"github.com/blackducksoftware/armada/pkg/hub"
+
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 )
 
 // ActionInterface defines an interface for actions of the federator
@@ -49,7 +51,7 @@ type FederatorInterface interface {
 	CreateHubClients(*api.HubList)
 	AddHub(string, *hub.Client)
 	GetHubs() map[string]*hub.Client
-	GetLastError(string, api.EndpointType) *api.LastError
+	GetLastError(string, api.EndpointType) map[string]*hubclient.HubClientError
 	SendGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
 	SendCreateRequest(api.EndpointType, string, interface{})
 	SendDeleteRequest(api.EndpointType, string, string)

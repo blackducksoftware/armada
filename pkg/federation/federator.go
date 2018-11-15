@@ -58,6 +58,10 @@ type hubError struct {
 	Err  *hubclient.HubClientError
 }
 
+type lastError struct {
+	Errors map[string]*hubclient.HubClientError
+}
+
 // Federator handles federating queries across multiple hubs
 type Federator struct {
 	responder  responders.ResponderInterface
@@ -67,7 +71,7 @@ type Federator struct {
 	// model
 	config     *FederatorConfig
 	hubs       map[string]*hub.Client
-	lastErrors map[api.EndpointType]map[string]*api.LastError
+	lastErrors map[api.EndpointType]map[string]*lastError
 
 	// channels
 	stop    chan struct{}
@@ -121,7 +125,7 @@ func NewFederator(configPath string) (*Federator, error) {
 		hubs:       map[string]*hub.Client{},
 		stop:       make(chan struct{}),
 		actions:    make(chan actions.ActionInterface, actionChannelSize),
-		lastErrors: map[api.EndpointType]map[string]*api.LastError{},
+		lastErrors: map[api.EndpointType]map[string]*lastError{},
 	}
 
 	return fed, nil
@@ -192,22 +196,22 @@ func (fed *Federator) GetHubs() map[string]*hub.Client {
 	return fed.hubs
 }
 
-func (fed *Federator) setLastError(method string, endPoint api.EndpointType, lastError *api.LastError) {
+func (fed *Federator) setLastError(method string, endPoint api.EndpointType, le *lastError) {
 	if _, ok := fed.lastErrors[endPoint]; !ok {
-		fed.lastErrors[endPoint] = make(map[string]*api.LastError)
+		fed.lastErrors[endPoint] = make(map[string]*lastError)
 	}
-	fed.lastErrors[endPoint][method] = lastError
+	fed.lastErrors[endPoint][method] = le
 }
 
 // GetLastError will retrieve the last error information for a provided endpoint
-func (fed *Federator) GetLastError(method string, endPoint api.EndpointType) *api.LastError {
-	return fed.lastErrors[endPoint][strings.ToUpper(method)]
+func (fed *Federator) GetLastError(method string, endPoint api.EndpointType) map[string]*hubclient.HubClientError {
+	return fed.lastErrors[endPoint][strings.ToUpper(method)].Errors
 }
 
 // SendGetRequest will retrieve information from the hubs
 func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFuncsType, objID string, result interface{}) {
 	var wg sync.WaitGroup
-	var errs api.LastError
+	var errs lastError
 
 	hubCount := len(fed.hubs)
 	resultCh := make(chan interface{}, hubCount)
@@ -307,7 +311,7 @@ func (fed *Federator) getHubListField(list interface{}, field string) reflect.Va
 // SendCreateRequest create information in the hubs
 func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc string, request interface{}) {
 	var wg sync.WaitGroup
-	var errs api.LastError
+	var errs lastError
 
 	hubCount := len(fed.hubs)
 	resultCh := make(chan interface{}, hubCount)
@@ -353,7 +357,7 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 // SendDeleteRequest will delete information from the hubs
 func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc string, id string) {
 	var wg sync.WaitGroup
-	var errs api.LastError
+	var errs lastError
 
 	hubCount := len(fed.hubs)
 	errCh := make(chan hubError, hubCount)
