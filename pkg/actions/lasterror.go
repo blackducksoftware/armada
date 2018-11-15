@@ -23,11 +23,13 @@ package actions
 
 import (
 	"github.com/blackducksoftware/armada/pkg/api"
+
+	"github.com/blackducksoftware/hub-client-go/hubclient"
 )
 
 // GetLastErrorResponse defines the response for a GetLastError request
 type GetLastErrorResponse struct {
-	response *api.LastError
+	response map[string]*hubclient.HubClientError
 }
 
 // ReplaceSource has nothing to do
