@@ -244,22 +244,40 @@ func NewClient(username string, password string, host string, client RawClientIn
 				hub.recordError(err)
 				if err != nil && hub.status == ClientStatusUp {
 					hub.status = ClientStatusDown
-					hub.recordError(hub.checkScansForCompletionTimer.Pause())
-					hub.recordError(hub.fetchScansTimer.Pause())
-					hub.recordError(hub.fetchAllScansTimer.Pause())
+					if hub.checkScansForCompletionTimer != nil {
+						hub.recordError(hub.checkScansForCompletionTimer.Pause())
+					}
+					if hub.fetchScansTimer != nil {
+						hub.recordError(hub.fetchScansTimer.Pause())
+					}
+					if hub.fetchAllScansTimer != nil {
+						hub.recordError(hub.fetchAllScansTimer.Pause())
+					}
 				} else if err == nil && hub.status == ClientStatusDown {
 					hub.status = ClientStatusUp
-					hub.recordError(hub.checkScansForCompletionTimer.Resume(true))
-					hub.recordError(hub.fetchScansTimer.Resume(true))
-					hub.recordError(hub.fetchAllScansTimer.Resume(true))
+					if hub.checkScansForCompletionTimer != nil {
+						hub.recordError(hub.checkScansForCompletionTimer.Resume(true))
+					}
+					if hub.fetchScansTimer != nil {
+						hub.recordError(hub.fetchScansTimer.Resume(true))
+					}
+					if hub.fetchAllScansTimer != nil {
+						hub.recordError(hub.fetchAllScansTimer.Resume(true))
+					}
 				}
 			}
 		}
 	}()
 	hub.getMetricsTimer = hub.startGetMetricsTimer(15 * time.Second)
-	hub.checkScansForCompletionTimer = hub.startCheckScansForCompletionTimer(scanCompletionPause)
-	hub.fetchScansTimer = hub.startFetchUnknownScansTimer(fetchUnknownScansPause)
-	hub.fetchAllScansTimer = hub.startFetchAllScansTimer(fetchAllScansPause)
+	if scanCompletionPause != 0 {
+		hub.checkScansForCompletionTimer = hub.startCheckScansForCompletionTimer(scanCompletionPause)
+	}
+	if fetchUnknownScansPause != 0 {
+		hub.fetchScansTimer = hub.startFetchUnknownScansTimer(fetchUnknownScansPause)
+	}
+	if fetchAllScansPause != 0 {
+		hub.fetchAllScansTimer = hub.startFetchAllScansTimer(fetchAllScansPause)
+	}
 	hub.loginTimer = hub.startLoginTimer(30 * time.Minute)
 	return hub
 }

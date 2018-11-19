@@ -88,10 +88,9 @@ type Hub struct {
 
 // HubConfig defines the config used when contacting a hub
 type HubConfig struct {
-	User                         string `json:"user,omitempty"`
-	Password                     string `json:"password,omitempty"`
-	ClientTimeoutMilliseconds    *int   `json:"clientTimeoutMilliseconds,omitempty"`
-	FetchAllProjectsPauseSeconds *int   `json:"fetchAllProjectsPauseSeconds,omitempty"`
+	User                      string `json:"user,omitempty"`
+	Password                  string `json:"password,omitempty"`
+	ClientTimeoutMilliseconds *int   `json:"clientTimeoutMilliseconds,omitempty"`
 }
 
 // HubList is a list of Hub items
