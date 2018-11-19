@@ -73,7 +73,6 @@ func (hc *HubClientCreator) CreateClients(hubs *api.HubList) {
 
 		user := hubConfig.User
 		timeout := time.Duration(*hubConfig.ClientTimeoutMilliseconds) * time.Millisecond
-		fetchAllProjectsPause := time.Duration(*hubConfig.FetchAllProjectsPauseSeconds) * time.Second
 
 		hostWithPort := fmt.Sprintf("%s:%d", host, port)
 		baseURL := fmt.Sprintf("https://%s", hostWithPort)
@@ -83,7 +82,7 @@ func (hc *HubClientCreator) CreateClients(hubs *api.HubList) {
 			continue
 		}
 
-		client := hub.NewClient(user, hubConfig.Password, hostWithPort, rawClient, 30*time.Second, 30*time.Second, fetchAllProjectsPause)
+		client := hub.NewClient(user, hubConfig.Password, hostWithPort, rawClient, 0, 0, 0)
 		go func() {
 			hc.didFinishHubCreation <- &actions.HubCreationResult{Hub: client}
 		}()
