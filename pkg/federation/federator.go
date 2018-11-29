@@ -205,10 +205,15 @@ func (fed *Federator) setLastError(method string, endPoint api.EndpointType, le 
 
 // GetLastError will retrieve the last error information for a provided endpoint
 func (fed *Federator) GetLastError(method string, endPoint api.EndpointType) map[string]*hubclient.HubClientError {
+	m := strings.ToUpper(method)
+
 	if _, ok := fed.lastErrors[endPoint]; !ok {
 		return map[string]*hubclient.HubClientError{}
 	}
-	return fed.lastErrors[endPoint][strings.ToUpper(method)].Errors
+	if _, ok := fed.lastErrors[endPoint][m]; !ok {
+		return map[string]*hubclient.HubClientError{}
+	}
+	return fed.lastErrors[endPoint][m].Errors
 }
 
 // SendGetRequest will retrieve information from the hubs
