@@ -44,7 +44,7 @@ func NewGetPolicyRules(id string, ep api.EndpointType) *GetPolicyRules {
 func (gpr *GetPolicyRules) Execute(fed FederatorInterface) error {
 	var policyRules hubapi.PolicyRuleList
 
-	funcs := api.GetFuncsType{
+	funcs := api.HubFuncsType{
 		Get:    "GetPolicyRule",
 		GetAll: "ListAllPolicyRules",
 		SingleToList: func(single interface{}) interface{} {
@@ -80,7 +80,10 @@ func NewCreatePolicyRule(r *hubapi.PolicyRuleRequest) *CreatePolicyRule {
 
 // Execute will tell the provided federator to create the policy rule in all hubs
 func (cpr *CreatePolicyRule) Execute(fed FederatorInterface) error {
-	fed.SendCreateRequest(api.PolicyRulesEndpoint, "CreatePolicyRule", cpr.request)
+	funcs := api.HubFuncsType{
+		Create: "CreatePolicyRule",
+	}
+	fed.SendCreateRequest(api.PolicyRulesEndpoint, funcs, cpr.request)
 	cpr.responseCh <- &EmptyResponse{}
 	return nil
 }
@@ -98,7 +101,20 @@ func NewDeletePolicyRule(id string) *DeletePolicyRule {
 
 // Execute will tell the provided federator to delete the policy rule in all hubs
 func (dpr *DeletePolicyRule) Execute(fed FederatorInterface) error {
-	fed.SendDeleteRequest(api.PolicyRulesEndpoint, "DeletePolicyRule", dpr.id)
+	funcs := api.HubFuncsType{
+		Get:    "GetPolicyRule",
+		GetAll: "ListAllPolicyRules",
+		Delete: "DeletePolicyRule",
+		SingleToList: func(single interface{}) interface{} {
+			item := reflect.ValueOf(single).Interface()
+			list := hubapi.PolicyRuleList{
+				TotalCount: 1,
+				Items:      []hubapi.PolicyRule{*item.(*hubapi.PolicyRule)},
+			}
+			return &list
+		},
+	}
+	fed.SendDeleteRequest(api.PolicyRulesEndpoint, funcs, dpr.id)
 	dpr.responseCh <- &EmptyResponse{}
 	return nil
 }

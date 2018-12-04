@@ -115,9 +115,11 @@ const (
 	LastErrorEndpoint        EndpointType = "lasterror"
 )
 
-// GetFuncsType defines the functions used in a get request
-type GetFuncsType struct {
+// HubFuncsType defines various functions for interacting with a hub
+type HubFuncsType struct {
+	Create       string
 	Get          string
 	GetAll       string
+	Delete       string
 	SingleToList func(interface{}) interface{}
 }

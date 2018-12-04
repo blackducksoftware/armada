@@ -44,7 +44,7 @@ func NewGetProjects(id string, ep api.EndpointType) *GetProjects {
 func (gp *GetProjects) Execute(fed FederatorInterface) error {
 	var projects hubapi.ProjectList
 
-	funcs := api.GetFuncsType{
+	funcs := api.HubFuncsType{
 		Get:    "GetProject",
 		GetAll: "ListAllProjects",
 		SingleToList: func(single interface{}) interface{} {

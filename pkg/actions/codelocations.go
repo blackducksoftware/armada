@@ -44,7 +44,7 @@ func NewGetCodeLocations(id string, ep api.EndpointType) *GetCodeLocations {
 func (gcl *GetCodeLocations) Execute(fed FederatorInterface) error {
 	var codeLocations hubapi.CodeLocationList
 
-	funcs := api.GetFuncsType{
+	funcs := api.HubFuncsType{
 		Get:    "GetCodeLocation",
 		GetAll: "ListAllCodeLocations",
 		SingleToList: func(single interface{}) interface{} {
