@@ -217,7 +217,7 @@ func (fed *Federator) GetLastError(method string, endPoint api.EndpointType) map
 }
 
 // SendGetRequest will retrieve information from the hubs
-func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFuncsType, objID string, result interface{}) {
+func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.HubFuncsType, objID string, result interface{}) {
 	var wg sync.WaitGroup
 	var errs lastError
 
@@ -228,39 +228,16 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 
 	wg.Add(hubCount)
 	for hubURL, client := range fed.hubs {
-		go func(client *hub.Client, url string, id string, ep api.EndpointType, funcs api.GetFuncsType) {
+		go func(client *hub.Client, url string, id string, ep string, funcs api.HubFuncsType) {
 			defer wg.Done()
-			strEp := actions.ConvertAllEndpoint(ep)
-			if len(id) > 0 {
-				link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/%s/%s", url, strEp, id)}
-				log.Debugf("querying %s %s", strEp, link.Href)
-				hubFunc := fed.getHubClientFunc(funcs.Get, client)
-				callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(link)})
-				resp := callResp[0].Interface()
-				err := callResp[1].Interface()
-				log.Debugf("response to %s query from %s: %+v", strEp, link.Href, resp)
-				if err != nil {
-					hubErr := err.(*hubclient.HubClientError)
-					errCh <- hubError{Host: url, Err: hubErr}
-				} else {
-					list := funcs.SingleToList(resp)
-					resultCh <- &list
-				}
+			resp, err := fed.doHubGetRequest(client, url, id, ep, funcs)
+			if err != nil {
+				hubErr := err.(*hubclient.HubClientError)
+				errCh <- hubError{Host: url, Err: hubErr}
 			} else {
-				log.Debugf("querying all %s", strEp)
-				hubFunc := fed.getHubClientFunc(funcs.GetAll, client)
-				callResp := hubFunc.Call([]reflect.Value{})
-				resp := callResp[0].Interface()
-				err := callResp[1].Interface()
-				if err != nil {
-					log.Warningf("failed to get %s from %s: %v", strEp, url, err)
-					hubErr := err.(*hubclient.HubClientError)
-					errCh <- hubError{Host: url, Err: hubErr}
-				} else {
-					resultCh <- &resp
-				}
+				resultCh <- &resp
 			}
-		}(client, hubURL, objID, endpoint, funcs)
+		}(client, hubURL, objID, actions.ConvertAllEndpoint(endpoint), funcs)
 	}
 
 	wg.Wait()
@@ -280,6 +257,28 @@ func (fed *Federator) SendGetRequest(endpoint api.EndpointType, funcs api.GetFun
 	fed.setLastError(http.MethodGet, endpoint, &errs)
 }
 
+func (fed *Federator) doHubGetRequest(client *hub.Client, url string, id string, ep string, funcs api.HubFuncsType) (interface{}, error) {
+	if len(id) > 0 {
+		link := hubapi.ResourceLink{Href: fmt.Sprintf("https://%s/api/%s/%s", url, ep, id)}
+		log.Debugf("querying %s %s", ep, link.Href)
+		resp, err := fed.doHubCall(funcs.Get, client, []reflect.Value{reflect.ValueOf(link)})
+		log.Debugf("response to %s query from %s: %+v", ep, link.Href, resp)
+		if err != nil {
+			return nil, err.(error)
+		}
+		list := funcs.SingleToList(resp)
+		return list, nil
+	}
+
+	log.Debugf("querying all %s", ep)
+	resp, err := fed.doHubCall(funcs.GetAll, client, []reflect.Value{})
+	if err != nil {
+		log.Warningf("failed to get %s from %s: %v", ep, url, err)
+		return nil, err.(error)
+	}
+	return resp, nil
+}
+
 func (fed *Federator) getHubClientFunc(name string, hubClient *hub.Client) reflect.Value {
 	return reflect.ValueOf(hubClient).MethodByName(name)
 }
@@ -287,6 +286,11 @@ func (fed *Federator) getHubClientFunc(name string, hubClient *hub.Client) refle
 func (fed *Federator) mergeHubList(orig interface{}, new interface{}) {
 	log.Debugf("mergeHubList orig: %+v", orig)
 	log.Debugf("mergeHubList new: %+v", new)
+
+	if reflect.ValueOf(orig).Elem().Interface() == nil {
+		reflect.ValueOf(orig).Elem().Set(reflect.ValueOf(new))
+		return
+	}
 
 	// Merge TotalCount first
 	origCount := fed.getHubListField(orig, "TotalCount")
@@ -317,7 +321,7 @@ func (fed *Federator) getHubListField(list interface{}, field string) reflect.Va
 }
 
 // SendCreateRequest create information in the hubs
-func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc string, request interface{}) {
+func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, funcs api.HubFuncsType, request interface{}) {
 	var wg sync.WaitGroup
 	var errs lastError
 
@@ -328,22 +332,18 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 
 	wg.Add(hubCount)
 	for hubURL, client := range fed.hubs {
-		go func(client *hub.Client, url string, ep api.EndpointType, createF string, req interface{}) {
+		go func(client *hub.Client, url string, ep string, createFunc string, req interface{}) {
 			defer wg.Done()
-			strEp := actions.ConvertAllEndpoint(ep)
-			log.Debugf("creating %s %+v", strEp, req)
-			hubFunc := fed.getHubClientFunc(createF, client)
-			callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(req)})
-			resp := callResp[0].Interface()
-			err := callResp[1].Interface()
+			log.Debugf("creating %s %+v", ep, req)
+			resp, err := fed.doHubCall(createFunc, client, []reflect.Value{reflect.ValueOf(req)})
 			if err != nil {
-				log.Warningf("failed to create %s in %s: %v", strEp, url, err)
+				log.Warningf("failed to create %s in %s: %v", ep, url, err)
 				hubErr := err.(*hubclient.HubClientError)
 				errCh <- hubError{Host: url, Err: hubErr}
 			} else {
 				resultCh <- &resp
 			}
-		}(client, hubURL, endpoint, createFunc, request)
+		}(client, hubURL, actions.ConvertAllEndpoint(endpoint), funcs.Create, request)
 	}
 
 	wg.Wait()
@@ -363,32 +363,102 @@ func (fed *Federator) SendCreateRequest(endpoint api.EndpointType, createFunc st
 }
 
 // SendDeleteRequest will delete information from the hubs
-func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc string, id string) {
+func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, funcs api.HubFuncsType, id string) {
 	var wg sync.WaitGroup
 	var errs lastError
+	var getObj interface{}
+	var delObjIface interface{}
 
 	hubCount := len(fed.hubs)
 	errCh := make(chan hubError, hubCount)
 	errs.Errors = make(map[string]*hubclient.HubClientError)
 
+	// Get the object from the hub with the id to we can use it to compare against objects from other hubs
+	fed.SendGetRequest(endpoint, funcs, id, &getObj)
+	delObj := reflect.ValueOf(getObj)
+	if delObj.IsValid() {
+		delObjIface = delObj.Elem().FieldByName("Items").Index(0).Interface()
+		log.Debugf("deleting object %+v", delObj)
+	} else {
+		delObjIface = reflect.ValueOf(nil)
+		log.Debugf("deleting object id %s", id)
+	}
+
 	wg.Add(hubCount)
 	for hubURL, client := range fed.hubs {
-		go func(client *hub.Client, url string, id string, ep api.EndpointType, deleteF string) {
-			strEp := actions.ConvertAllEndpoint(ep)
+		go func(client *hub.Client, url string, ep string, hubFuncs api.HubFuncsType, deleteObj interface{}, deleteId string) {
 			defer wg.Done()
-			log.Debugf("deleting %s %s from hub %s", strEp, id, url)
-			loc := fmt.Sprintf("https://%s/api/%s/%s", url, strEp, id)
-			hubFunc := fed.getHubClientFunc(deleteF, client)
-			callResp := hubFunc.Call([]reflect.Value{reflect.ValueOf(loc)})
-			err := callResp[0].Interface()
-			if err != nil {
-				log.Warningf("failed to delete %s %s in %s: %v", strEp, id, url, err)
-				hubErr := err.(*hubclient.HubClientError)
-				errCh <- hubError{Host: url, Err: hubErr}
-			} else {
-				errCh <- hubError{Host: url, Err: nil}
+
+			loc := fmt.Sprintf("https://%s/api/%s/%s", url, ep, deleteId)
+			deleteByID := func() {
+				log.Debugf("deleting %s %s from hub %s", ep, deleteId, url)
+				_, err := fed.doHubCall(hubFuncs.Delete, client, []reflect.Value{reflect.ValueOf(loc)})
+				if err != nil {
+					log.Warningf("failed to delete %s %s in %s: %v", ep, deleteId, url, err)
+					hubErr := err.(*hubclient.HubClientError)
+					errCh <- hubError{Host: url, Err: hubErr}
+				} else {
+					errCh <- hubError{Host: url, Err: nil}
+				}
+
 			}
-		}(client, hubURL, id, endpoint, deleteFunc)
+
+			if reflect.ValueOf(deleteObj).IsValid() {
+				log.Debugf("deleteObj Type: %s", reflect.TypeOf(deleteObj))
+				log.Debugf("deleteObj Value: %s", reflect.ValueOf(deleteObj))
+				delObjIface := reflect.ValueOf(deleteObj)
+				if delObjIface.Type().Kind() != reflect.Ptr {
+					// Create a new type of Iface, so we have a pointer to work with
+					delObjIface = reflect.New(reflect.TypeOf(deleteObj))
+					delObjIface.Elem().Set(reflect.ValueOf(deleteObj))
+				}
+				compareFunc := delObjIface.MethodByName("IsEqual")
+				if compareFunc.IsValid() {
+					var item reflect.Value
+
+					// Get all objects for comparison
+					allObjs, _ := fed.doHubGetRequest(client, url, "", ep, hubFuncs)
+					items := fed.getHubListField(allObjs, "Items")
+					for i := 0; i < items.Len(); i++ {
+						listItem := items.Index(i)
+						callResp := compareFunc.Call([]reflect.Value{listItem.Addr()})
+						if callResp[0].Bool() {
+							item = listItem
+							log.Debugf("found matching object to delete in %s: %+v", url, item.Interface())
+							break
+						}
+					}
+
+					if item.IsValid() {
+						// This is the same object so look up the href link to get the url needed to delete
+						href := item.FieldByName("Meta").FieldByName("Href").Interface()
+						_, err := fed.doHubCall(hubFuncs.Delete, client, []reflect.Value{reflect.ValueOf(href)})
+						if err != nil {
+							log.Warningf("failed to delete %s %+v in %s: %v", ep, item.Interface(), url, err)
+							hubErr := err.(*hubclient.HubClientError)
+							errCh <- hubError{Host: url, Err: hubErr}
+						} else {
+							errCh <- hubError{Host: url, Err: nil}
+						}
+					} else {
+						// The item doesn't exist in the hub
+						hubErr := &hubclient.HubClientError{
+							StatusCode: 404,
+							HubError: hubclient.HubResponseError{
+								ErrorMessage: "Not found.",
+								ErrorCode:    "{core.default.404.not_found}",
+							},
+						}
+						errCh <- hubError{Host: url, Err: hubErr}
+					}
+				} else {
+					log.Debugf("deletion object type %s has no IsEqual method", reflect.TypeOf(deleteObj))
+					deleteByID()
+				}
+			} else {
+				deleteByID()
+			}
+		}(client, hubURL, actions.ConvertAllEndpoint(endpoint), funcs, delObjIface, id)
 	}
 	wg.Wait()
 
@@ -400,4 +470,13 @@ func (fed *Federator) SendDeleteRequest(endpoint api.EndpointType, deleteFunc st
 	}
 
 	fed.setLastError(http.MethodDelete, endpoint, &errs)
+}
+
+func (fed *Federator) doHubCall(funcName string, client *hub.Client, args []reflect.Value) (interface{}, interface{}) {
+	hubFunc := fed.getHubClientFunc(funcName, client)
+	callResp := hubFunc.Call(args)
+	if len(callResp) > 1 {
+		return callResp[0].Interface(), callResp[1].Interface()
+	}
+	return nil, callResp[0].Interface()
 }

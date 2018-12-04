@@ -52,9 +52,9 @@ type FederatorInterface interface {
 	AddHub(string, *hub.Client)
 	GetHubs() map[string]*hub.Client
 	GetLastError(string, api.EndpointType) map[string]*hubclient.HubClientError
-	SendGetRequest(api.EndpointType, api.GetFuncsType, string, interface{})
-	SendCreateRequest(api.EndpointType, string, interface{})
-	SendDeleteRequest(api.EndpointType, string, string)
+	SendGetRequest(api.EndpointType, api.HubFuncsType, string, interface{})
+	SendCreateRequest(api.EndpointType, api.HubFuncsType, interface{})
+	SendDeleteRequest(api.EndpointType, api.HubFuncsType, string)
 }
 
 // EmptyResponse is a generic response to a request which

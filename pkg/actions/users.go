@@ -44,7 +44,7 @@ func NewGetUsers(id string, ep api.EndpointType) *GetUsers {
 func (gu *GetUsers) Execute(fed FederatorInterface) error {
 	var users hubapi.UserList
 
-	funcs := api.GetFuncsType{
+	funcs := api.HubFuncsType{
 		Get:    "GetUser",
 		GetAll: "ListAllUsers",
 		SingleToList: func(single interface{}) interface{} {
@@ -80,7 +80,10 @@ func NewCreateUser(r *hubapi.UserRequest) *CreateUser {
 
 // Execute will tell the provided federator to create the user in all hubs
 func (cu *CreateUser) Execute(fed FederatorInterface) error {
-	fed.SendCreateRequest(api.UsersEndpoint, "CreateUser", cu.request)
+	funcs := api.HubFuncsType{
+		Create: "CreateUser",
+	}
+	fed.SendCreateRequest(api.UsersEndpoint, funcs, cu.request)
 	cu.responseCh <- &EmptyResponse{}
 	return nil
 }

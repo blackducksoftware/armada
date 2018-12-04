@@ -44,7 +44,7 @@ func NewGetComponents(id string, ep api.EndpointType) *GetComponents {
 func (gc *GetComponents) Execute(fed FederatorInterface) error {
 	var components hubapi.ComponentList
 
-	funcs := api.GetFuncsType{
+	funcs := api.HubFuncsType{
 		Get:    "GetComponent",
 		GetAll: "ListAllComponents",
 		SingleToList: func(single interface{}) interface{} {

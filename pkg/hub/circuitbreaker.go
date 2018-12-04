@@ -22,7 +22,7 @@ under the License.
 package hub
 
 import (
-	"fmt"
+	//	"fmt"
 	"math"
 	"time"
 
@@ -132,9 +132,9 @@ func (cb *CircuitBreaker) setNextCheckTime() {
 //  - runs 'request'
 //  - looks at the result of 'request', disabling itself on failure
 func (cb *CircuitBreaker) IssueRequest(description string, request func() error) error {
-	if !cb.isAbleToIssueRequest() {
-		return fmt.Errorf("unable to issue request %s, circuit breaker is disabled", description)
-	}
+	//	if !cb.isAbleToIssueRequest() {
+	//		return fmt.Errorf("unable to issue request %s, circuit breaker is disabled", description)
+	//	}
 	start := time.Now()
 	err := request()
 	recordHubResponseTime(cb.host, description, time.Now().Sub(start))
